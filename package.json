@@ -6,7 +6,8 @@
     "dev": "bun run --watch src/index.ts"
   },
   "dependencies": {
-    "elysia": "latest"
+    "elysia": "latest",
+    "pyodide": "^0.29.0"
   },
   "devDependencies": {
     "bun-types": "latest"

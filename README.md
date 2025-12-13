@@ -6,7 +6,7 @@
 
 **Vivarium** is a web server that provides a sandboxed Python execution environment using Pyodide (WebAssembly-based Python interpreter). It allows safe execution of Python code in isolated sessions with automatic cleanup and resource management.
 
-> Vivarium is largely influence by [cohere-terrarium](https://github.com/cohere-ai/cohere-terrarium)
+> Vivarium is heavy influenced by [cohere-terrarium](https://github.com/cohere-ai/cohere-terrarium)
 > but added sessions base execution instead of ad-hocs base execution
 > and since it did not recieves any new commit for a year,
 > I decide to create vivarium from the groud up with bun.

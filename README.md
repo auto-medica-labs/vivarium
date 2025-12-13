@@ -6,6 +6,11 @@
 
 **Vivarium** is a web server that provides a sandboxed Python execution environment using Pyodide (WebAssembly-based Python interpreter). It allows safe execution of Python code in isolated sessions with automatic cleanup and resource management.
 
+> Vivarium is largely influence by [cohere-terrarium](https://github.com/cohere-ai/cohere-terrarium)
+> but added sessions base execution instead of ad-hocs base execution
+> and since it did not recieves any new commit for a year,
+> I decide to create vivarium from the groud up with bun.
+
 ## Features
 
 - ✅ **Sandboxed Python Execution**: Run Python code safely in isolated WebAssembly environments
@@ -15,28 +20,6 @@
 - ✅ **REST API**: Simple HTTP interface for code execution
 - ✅ **Health Monitoring**: Endpoints for monitoring server health and active sessions
 - ✅ **Automatic Cleanup**: Expired sessions are automatically cleaned up
-
-## Architecture
-
-```
-┌───────────────────────────────────────────────────────┐
-│                   Vivarium Server                      │
-├───────────────────────────────────────────────────────┤
-│                                                       │
-│  ┌─────────────┐    ┌─────────────────────────────┐  │
-│  │             │    │                             │  │
-│  │  Elysia     │◄───┤        SessionManager      │  │
-│  │  (Web       │    │                             │  │
-│  │  Framework) │    │  ┌───────────────────────┐  │  │
-│  │             │    │  │                       │  │  │
-│  └─────────────┘    │  │  PyodidePythonEnv     │  │  │
-│                     │  │  (Python Sandbox)     │  │  │
-│                     │  └───────────────────────┘  │  │
-│                     │                             │  │
-│                     └─────────────────────────────┘  │
-│                                                       │
-└───────────────────────────────────────────────────────┘
-```
 
 ## Technology Stack
 
@@ -48,12 +31,14 @@
 ## Key Components
 
 ### Session Manager
+
 - Manages multiple Python execution sessions
 - Automatic session timeout (configurable, default: 10 minutes)
 - Periodic cleanup of expired sessions
 - Session health monitoring
 
 ### Python Environment
+
 - Pyodide-based Python interpreter
 - Isolated file system per session
 - Pre-loaded common packages (numpy, matplotlib, pandas)
@@ -75,11 +60,13 @@ http://localhost:3080
 Execute Python code in a sandboxed environment.
 
 **Parameters:**
+
 - `sessionId` (query, required): Unique session identifier
 - `code` (body, required): Python code to execute
 - `files` (body, optional): Array of files to upload to the environment
 
 **Request Body:**
+
 ```json
 {
   "code": "print('Hello World')",
@@ -93,6 +80,7 @@ Execute Python code in a sandboxed environment.
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -112,6 +100,7 @@ Execute Python code in a sandboxed environment.
 ```
 
 **Error Response:**
+
 ```json
 {
   "success": false,
@@ -127,6 +116,7 @@ Execute Python code in a sandboxed environment.
 Check server health and get active session count.
 
 **Response:**
+
 ```json
 {
   "status": "healthy",
@@ -139,6 +129,7 @@ Check server health and get active session count.
 Get information about all active sessions.
 
 **Response:**
+
 ```json
 {
   "sessions": [
@@ -263,6 +254,7 @@ curl http://localhost:3080/sessions
 ### Pre-loaded Packages
 
 The following packages are pre-loaded for faster execution:
+
 - `numpy` - Numerical computing
 - `matplotlib` - Plotting and visualization
 - `pandas` - Data analysis
@@ -270,6 +262,7 @@ The following packages are pre-loaded for faster execution:
 ### File System
 
 Each session has an isolated file system with:
+
 - Home directory: `/home/earth`
 - Persistent files across executions within the same session
 - Base64 encoding for file transfer
@@ -324,6 +317,7 @@ CMD ["bun", "run", "src/index.ts"]
 ### Cloud Platforms
 
 Vivarium can be deployed to:
+
 - Vercel
 - AWS Lambda
 - Google Cloud Functions
@@ -370,15 +364,18 @@ Vivarium can be deployed to:
 ### Common Issues
 
 **Pyodide loading fails:**
+
 - Check network connectivity
 - Verify cache directory permissions
 - Ensure sufficient memory allocation
 
 **Session timeout issues:**
+
 - Adjust `SESSION_TIMEOUT_MINUTES` in configuration
 - Monitor `/sessions` endpoint for active sessions
 
 **File system errors:**
+
 - Verify base64 encoding of file content
 - Check file paths and permissions
 - Ensure files are properly formatted
@@ -410,6 +407,7 @@ Contributions are welcome! Please follow these guidelines:
 ## Support
 
 For issues, questions, or feature requests:
+
 - Open an issue on GitHub
 - Check the documentation
 - Review existing discussions
@@ -419,4 +417,3 @@ For issues, questions, or feature requests:
 - [Pyodide](https://pyodide.org/) - Python in WebAssembly
 - [Elysia.js](https://elysiajs.com/) - Fast TypeScript web framework
 - [Bun.js](https://bun.sh/) - Fast JavaScript runtime
-

@@ -225,6 +225,8 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
     }
 
     async runCode(code: string, files: any[]): Promise<CodeExecutionResponse> {
+        this.out_string = "";
+        this.err_string = "";
         const startCode = Date.now();
         let pyodide = this.pyodide!;
         let result: CodeExecutionResponse = { success: true };

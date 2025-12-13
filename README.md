@@ -25,7 +25,7 @@
 
 - **Backend Framework**: [Elysia.js](https://elysiajs.com/) - Fast TypeScript web framework
 - **Python Engine**: [Pyodide](https://pyodide.org/) - Python in WebAssembly
-- **Runtime**: Bun.js - Fast JavaScript runtime
+- **Runtime**: [Bun.js](https://bun.sh/) - Fast JavaScript runtime
 - **Language**: TypeScript - Type-safe JavaScript
 
 ## Key Components
@@ -167,8 +167,7 @@ Files are transferred using base64 encoding:
 
 ### Prerequisites
 
-- [Bun.js](https://bun.sh/) (recommended) or Node.js
-- Python (for development, not required for runtime)
+- [Bun.js](https://bun.sh/)
 
 ### Installation
 
@@ -194,10 +193,6 @@ const sessionManager = new SessionManager(10); // 10 minutes
 ### Running the Server
 
 ```bash
-# Development mode (with hot reload)
-bun run dev
-
-# Production mode
 bun run src/index.ts
 ```
 
@@ -280,26 +275,13 @@ Each session has an isolated file system with:
 
 ```
 src/
-├── service/              # Core services
-│   ├── python-interpreter.ts  # Python execution engine
-│   ├── session-manager.ts     # Session management
-│   └── types.ts              # Type definitions
-├── utils/                # Utility functions
-│   └── async-utils.ts     # Async helpers
-└── index.ts              # Main server entry
-```
-
-### Building
-
-```bash
-bun run build
-```
-
-### Testing
-
-```bash
-# Run tests (add your test framework)
-bun test
+├── service/
+│   ├── python-interpreter.ts
+│   ├── session-manager.ts
+│   └── types.ts
+├── utils/
+│   └── async-utils.ts
+└── index.ts
 ```
 
 ## Deployment
@@ -313,16 +295,6 @@ COPY . .
 RUN bun install
 CMD ["bun", "run", "src/index.ts"]
 ```
-
-### Cloud Platforms
-
-Vivarium can be deployed to:
-
-- Vercel
-- AWS Lambda
-- Google Cloud Functions
-- Azure Functions
-- Any platform supporting Bun.js/Node.js
 
 ## Security Considerations
 
@@ -345,41 +317,6 @@ Vivarium can be deployed to:
 - Set appropriate session timeouts based on your use case
 - Consider rate limiting for public APIs
 
-## Performance Optimization
-
-### Caching
-
-- Pyodide packages are cached in `pyodide_cache/` directory
-- Common packages are pre-loaded to reduce startup time
-- Session reuse for the same user reduces initialization overhead
-
-### Memory Management
-
-- Automatic cleanup of expired sessions
-- Interrupt support for long-running code
-- SharedArrayBuffer for efficient interrupt handling
-
-## Troubleshooting
-
-### Common Issues
-
-**Pyodide loading fails:**
-
-- Check network connectivity
-- Verify cache directory permissions
-- Ensure sufficient memory allocation
-
-**Session timeout issues:**
-
-- Adjust `SESSION_TIMEOUT_MINUTES` in configuration
-- Monitor `/sessions` endpoint for active sessions
-
-**File system errors:**
-
-- Verify base64 encoding of file content
-- Check file paths and permissions
-- Ensure files are properly formatted
-
 ## Contributing
 
 Contributions are welcome! Please follow these guidelines:
@@ -394,16 +331,6 @@ Contributions are welcome! Please follow these guidelines:
 
 [MIT License](LICENSE)
 
-## Roadmap
-
-- [ ] Add authentication middleware
-- [ ] Support for custom package installation
-- [ ] WebSocket interface for real-time output
-- [ ] Session persistence across server restarts
-- [ ] Enhanced error reporting with stack traces
-- [ ] Performance metrics and monitoring
-- [ ] Rate limiting and request throttling
-
 ## Support
 
 For issues, questions, or feature requests:
@@ -414,6 +341,7 @@ For issues, questions, or feature requests:
 
 ## Acknowledgements
 
+- [cohere-terrarium](https://github.com/cohere-ai/cohere-terrarium) - inspiration
 - [Pyodide](https://pyodide.org/) - Python in WebAssembly
 - [Elysia.js](https://elysiajs.com/) - Fast TypeScript web framework
 - [Bun.js](https://bun.sh/) - Fast JavaScript runtime

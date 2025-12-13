@@ -1,34 +1,68 @@
-import { Elysia, t, sse } from "elysia";
-import { setTimeout } from "timers/promises";
-import { PythonEnvironment } from "./service/types";
-import { PyodidePythonEnvironment } from "./service/python-interpreter";
+import { Elysia, t } from "elysia";
+import { SessionManager } from "./service/session-manager";
 
-// const pythonEnvironment: PythonEnvironment = new PyodidePythonEnvironment();
-// pythonEnvironment.init();
+const sessionManager = new SessionManager(10);
 
-const app = new Elysia();
-
-app.get("/sse", async function* () {
-    yield sse("hello");
-    await setTimeout(1000);
-    yield sse("world");
-});
-
-app.post(
+const app = new Elysia()
+  .post(
     "/exec",
-    async function* ({ body }) {
-        const { code } = body;
-        yield sse(code);
+    async ({ body, query }) => {
+      const { code, files = [] } = body;
+      const { sessionId } = query;
+
+      if (!sessionId) {
+        return {
+          success: false,
+          error: {
+            type: "validation",
+            message: "sessionId query parameter is required",
+          },
+        };
+      }
+
+      try {
+        // Get or create session
+        const session = await sessionManager.getOrCreateSession(
+          sessionId as string,
+        );
+        const environment = session.environment;
+
+        // Execute the code
+        const result = await environment.runCode(code, files);
+
+        return {
+          success: true,
+          result,
+        };
+      } catch (error: any) {
+        return {
+          success: false,
+          error: {
+            type: "execution",
+            message: error.message || "Unknown error occurred",
+          },
+        };
+      }
     },
     {
-        body: t.Object({
-            code: t.String(),
-        }),
+      body: t.Object({
+        code: t.String(),
+        files: t.Optional(t.Array(t.Any())),
+      }),
+      query: t.Object({
+        sessionId: t.String(),
+      }),
     },
-);
-
-app.listen(3080);
+  )
+  .get("/health", () => ({
+    status: "healthy",
+    activeSessions: sessionManager.getActiveSessionCount(),
+  }))
+  .get("/sessions", () => ({
+    sessions: sessionManager.getSessionsInfo(),
+  }))
+  .listen(3080);
 
 console.log(
-    `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`,
+  `vivarium is running at ${app.server?.hostname}:${app.server?.port}`,
 );

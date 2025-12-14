@@ -11,9 +11,9 @@ resource management.
 
 > Vivarium is heavy influenced by
 > [cohere-terrarium](https://github.com/cohere-ai/cohere-terrarium) but added
-> sessions base execution instead of ad-hocs base execution and since it did not
-> recieves any new commit for a year, I decide to create vivarium from the groud
-> up with bun.
+> sessions based execution instead of ad-hocs based execution, and since
+> terrarium did not recieve any new commit for a year, I decide to created
+> vivarium from the groud up with bun and elysiajs.
 
 ## Features
 

@@ -1,29 +1,39 @@
 # Vivarium - Python Sandbox Web Server
 
 > A vivarium (Latin for 'place of life'; pl. vivaria or vivariums) is an area,
-> usually enclosed, for keeping and raising animals or plants
-> for observation or research.
+> usually enclosed, for keeping and raising animals or plants for observation or
+> research.
 
-**Vivarium** is a web server that provides a sandboxed Python execution environment using Pyodide (WebAssembly-based Python interpreter). It allows safe execution of Python code in isolated sessions with automatic cleanup and resource management.
+**Vivarium** is a web server that provides a sandboxed Python execution
+environment using Pyodide (WebAssembly-based Python interpreter). It allows safe
+execution of Python code in isolated sessions with automatic cleanup and
+resource management.
 
-> Vivarium is heavy influenced by [cohere-terrarium](https://github.com/cohere-ai/cohere-terrarium)
-> but added sessions base execution instead of ad-hocs base execution
-> and since it did not recieves any new commit for a year,
-> I decide to create vivarium from the groud up with bun.
+> Vivarium is heavy influenced by
+> [cohere-terrarium](https://github.com/cohere-ai/cohere-terrarium) but added
+> sessions base execution instead of ad-hocs base execution and since it did not
+> recieves any new commit for a year, I decide to create vivarium from the groud
+> up with bun.
 
 ## Features
 
-- ✅ **Sandboxed Python Execution**: Run Python code safely in isolated WebAssembly environments
-- ✅ **Session Management**: Automatic session creation, cleanup, and timeout handling
-- ✅ **File System Support**: Upload/download files to/from the Python environment
-- ✅ **Package Pre-loading**: Common packages (numpy, matplotlib, pandas) are pre-loaded for faster execution
+- ✅ **Sandboxed Python Execution**: Run Python code safely in isolated
+  WebAssembly environments
+- ✅ **Session Management**: Automatic session creation, cleanup, and timeout
+  handling
+- ✅ **File System Support**: Upload/download files to/from the Python
+  environment
+- ✅ **Package Pre-loading**: Common packages (numpy, matplotlib, pandas) are
+  pre-loaded for faster execution
 - ✅ **REST API**: Simple HTTP interface for code execution
-- ✅ **Health Monitoring**: Endpoints for monitoring server health and active sessions
+- ✅ **Health Monitoring**: Endpoints for monitoring server health and active
+  sessions
 - ✅ **Automatic Cleanup**: Expired sessions are automatically cleaned up
 
 ## Technology Stack
 
-- **Backend Framework**: [Elysia.js](https://elysiajs.com/) - Fast TypeScript web framework
+- **Backend Framework**: [Elysia.js](https://elysiajs.com/) - Fast TypeScript
+  web framework
 - **Python Engine**: [Pyodide](https://pyodide.org/) - Python in WebAssembly
 - **Runtime**: [Bun.js](https://bun.sh/) - Fast JavaScript runtime
 - **Language**: TypeScript - Type-safe JavaScript
@@ -182,9 +192,11 @@ bun install
 
 ### Configuration
 
-The server runs on port `3080` by default. You can change this in `src/index.ts`.
+The server runs on port `3080` by default. You can change this in
+`src/index.ts`.
 
-Session timeout is configurable (default: 10 minutes). Modify the `SessionManager` constructor in `src/index.ts`:
+Session timeout is configurable (default: 10 minutes). Modify the
+`SessionManager` constructor in `src/index.ts`:
 
 ```typescript
 const sessionManager = new SessionManager(10); // 10 minutes
@@ -341,7 +353,8 @@ For issues, questions, or feature requests:
 
 ## Acknowledgements
 
-- [cohere-terrarium](https://github.com/cohere-ai/cohere-terrarium) - inspiration
+- [cohere-terrarium](https://github.com/cohere-ai/cohere-terrarium) -
+  inspiration
 - [Pyodide](https://pyodide.org/) - Python in WebAssembly
 - [Elysia.js](https://elysiajs.com/) - Fast TypeScript web framework
 - [Bun.js](https://bun.sh/) - Fast JavaScript runtime

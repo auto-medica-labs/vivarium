@@ -1,7 +1,7 @@
 import { Elysia, t } from "elysia";
 import { SessionManager } from "./service/session-manager";
 
-const sessionManager = new SessionManager(1);
+const sessionManager = new SessionManager(1); // use 1 for testing
 
 const app = new Elysia()
     .post(
@@ -47,7 +47,14 @@ const app = new Elysia()
         {
             body: t.Object({
                 code: t.String(),
-                files: t.Optional(t.Array(t.Any())),
+                files: t.Optional(
+                    t.Array(
+                        t.Object({
+                            filename: t.String(),
+                            b64_data: t.String(),
+                        }),
+                    ),
+                ),
             }),
             query: t.Object({
                 sessionId: t.String(),

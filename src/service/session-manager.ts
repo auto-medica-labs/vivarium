@@ -13,7 +13,7 @@ export class SessionManager {
     private cleanupInterval: NodeJS.Timeout | null = null;
     private readonly cleanupIntervalMs: number = 60 * 1000; // Check every minute
 
-    constructor(sessionTimeoutMinutes: number = 1) {
+    constructor(sessionTimeoutMinutes: number = 10) {
         this.sessionTimeout = sessionTimeoutMinutes * 60 * 1000;
         this.startCleanupInterval();
     }

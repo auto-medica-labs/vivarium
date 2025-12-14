@@ -196,7 +196,7 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
      * @param {string} filePath - The path of the file to be read.
      * @returns {string} - The base64 encoded content of the file.
      */
-    readFileAsBase64(filePath: string) {
+    readFileAsBase64(filePath: string): string {
         var fileData = this.pyodide!.FS.readFile(filePath, {
             encoding: "binary",
         });
@@ -207,7 +207,7 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
      * @param {Uint8Array} bytes the raw bytes to encode as base64
      * @returns base64 encoded string
      */
-    bytesToBase64(bytes: any) {
+    bytesToBase64(bytes: Uint8Array) {
         const binString = String.fromCodePoint(...bytes);
         return btoa(binString);
     }
@@ -217,14 +217,17 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
      * @param {string} base64
      * @returns Uint8Array of bytes
      */
-    base64ToBytes(base64: any) {
+    base64ToBytes(base64: string) {
         const binString = atob(base64);
         return (Uint8Array as any).from(binString, (m: any) =>
             m.codePointAt(0),
         );
     }
 
-    async runCode(code: string, files: any[]): Promise<CodeExecutionResponse> {
+    async runCode(
+        code: string,
+        files: { filename: string; b64_data: string }[],
+    ): Promise<CodeExecutionResponse> {
         this.out_string = "";
         this.err_string = "";
         const startCode = Date.now();

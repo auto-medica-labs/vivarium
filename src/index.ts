@@ -23,13 +23,9 @@ const app = new Elysia()
       }
 
       try {
-        // Get or create session
-        const session = await sessionManager.getOrCreateSession(
-          sessionId as string,
-        );
+        const session = await sessionManager.getOrCreateSession(sessionId);
         const environment = session.environment;
 
-        // Execute the code
         const result = await environment.runCode(code, files);
 
         return {

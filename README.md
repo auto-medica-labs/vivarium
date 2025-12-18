@@ -341,7 +341,7 @@ Contributions are welcome! Please follow these guidelines:
 
 ## License
 
-[MIT License](LICENSE)
+MIT
 
 ## Support
 

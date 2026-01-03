@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia";
 import { openapi } from "@elysiajs/openapi";
 import { SessionManager } from "./service/session-manager";
 
-const sessionManager = new SessionManager(1); // use 1 for testing
+const sessionManager = new SessionManager();
 
 const app = new Elysia()
   .use(openapi())

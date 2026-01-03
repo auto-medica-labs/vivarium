@@ -130,7 +130,6 @@ export class SessionManager {
    * @returns The number of sessions that were cleaned up
    */
   private async cleanupExpiredSessions(): Promise<number> {
-    const now = Date.now();
     const expiredSessions: string[] = [];
 
     // Find expired sessions

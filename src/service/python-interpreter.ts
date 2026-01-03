@@ -1,3 +1,7 @@
+/*
+ *  original source code: https://github.com/cohere-ai/cohere-terrarium/blob/main/src/services/python-interpreter/service.ts
+ */
+
 import { PyodideInterface, loadPyodide } from "pyodide";
 import { waitFor } from "../utils/async-utils";
 import { promises as fs } from "fs";
@@ -62,32 +66,32 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
               return null; // this is needed! https://github.com/pyodide/matplotlib-pyodide/blob/61935f72718c0754a9b94e1569a685ad3c50ae91/matplotlib_pyodide/wasm_backend.py#L48
             else
               return {
-                addEventListener: () => {},
+                addEventListener: () => { },
                 style: {},
-                classList: { add: () => {}, remove: () => {} },
-                setAttribute: () => {},
-                appendChild: () => {},
-                remove: () => {},
+                classList: { add: () => { }, remove: () => { } },
+                setAttribute: () => { },
+                appendChild: () => { },
+                remove: () => { },
               };
           },
           createElement: () => ({
-            addEventListener: () => {},
+            addEventListener: () => { },
             style: {},
-            classList: { add: () => {}, remove: () => {} },
-            setAttribute: () => {},
-            appendChild: () => {},
-            remove: () => {},
+            classList: { add: () => { }, remove: () => { } },
+            setAttribute: () => { },
+            appendChild: () => { },
+            remove: () => { },
           }),
           createTextNode: () => ({
-            addEventListener: () => {},
+            addEventListener: () => { },
             style: {},
-            classList: { add: () => {}, remove: () => {} },
-            setAttribute: () => {},
-            appendChild: () => {},
-            remove: () => {},
+            classList: { add: () => { }, remove: () => { } },
+            setAttribute: () => { },
+            appendChild: () => { },
+            remove: () => { },
           }),
           body: {
-            appendChild: () => {},
+            appendChild: () => { },
           },
         },
       }, // removing any way for python to access any of the hosts js functions or variables

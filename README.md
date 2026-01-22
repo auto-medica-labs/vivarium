@@ -13,7 +13,7 @@ resource management.
 > [cohere-terrarium](https://github.com/cohere-ai/cohere-terrarium) but added
 > sessions based execution instead of ad-hocs based execution, and since
 > terrarium did not recieve any new commit for a year, I decide to created
-> vivarium from the groud up with bun and elysiajs.
+> vivarium from the ground up with bun and elysiajs.
 
 ## Features
 

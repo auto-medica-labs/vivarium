@@ -3,6 +3,7 @@ import { openapi } from "@elysiajs/openapi";
 import { SessionManager } from "./service/session-manager";
 
 const sessionManager = new SessionManager();
+const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 30000;
 
 const app = new Elysia()
   .use(openapi())
@@ -71,3 +72,38 @@ const app = new Elysia()
 console.log(
   `vivarium is running at ${app.server?.hostname}:${app.server?.port}`,
 );
+
+const handleShutdown = async (signal: string) => {
+  console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
+
+  const shutdownTimeout = setTimeout(() => {
+    console.error(
+      `Graceful shutdown timed out after ${GRACEFUL_SHUTDOWN_TIMEOUT_MS}ms. Forcing exit.`,
+    );
+    process.exit(1);
+  }, GRACEFUL_SHUTDOWN_TIMEOUT_MS);
+
+  try {
+    if (app.server) {
+      console.log("Stopping new connections...");
+      await app.stop();
+      console.log("Server stopped accepting new connections");
+    }
+
+    console.log("Shutting down session manager...");
+    await sessionManager.shutdown();
+    console.log("Session manager shutdown complete");
+
+    clearTimeout(shutdownTimeout);
+
+    console.log("Graceful shutdown complete");
+    process.exit(0);
+  } catch (error) {
+    console.error("Error during graceful shutdown:", error);
+    clearTimeout(shutdownTimeout);
+    process.exit(1);
+  }
+};
+
+process.on("SIGTERM", () => handleShutdown("SIGTERM"));
+process.on("SIGINT", () => handleShutdown("SIGINT"));

@@ -17,7 +17,7 @@ function getEnvString(name: string, defaultValue: string): string {
 export const config = {
   port: getEnvInt("PORT", 3080),
   sessionTimeoutMinutes: getEnvInt("SESSION_TIMEOUT_MINUTES", 10),
-  executionTimeoutMs: getEnvInt("EXECUTION_TIMEOUT_MS", 30000),
+  executionTimeoutMs: getEnvInt("EXECUTION_TIMEOUT_MS", 60000),
   maxFileSizeBytes: getEnvInt("MAX_FILE_SIZE_BYTES", 10 * 1024 * 1024),
   maxFilesPerRequest: getEnvInt("MAX_FILES_PER_REQUEST", 10),
   rateLimitRequestsPerMin: getEnvInt("RATE_LIMIT_REQUESTS_PER_MIN", 10),

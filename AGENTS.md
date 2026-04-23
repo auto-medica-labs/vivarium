@@ -14,37 +14,22 @@ Implemented: guards before code execution.
 - Returns `{ success: false, error: { type: "resource_limit", message: ... } }`
 Files: `src/index.ts`, `src/service/python-interpreter.ts`
 
-## ❌ BROKEN — 3. Execution Timeout ⏱️
-**Problem:** `pyodide.setInterruptBuffer()` + `Uint8Array` does **not** stop CPU-bound
-infinite loops in Bun + Pyodide 0.29. A `while True: pass` hangs the main thread
-indefinitely; the 30s timeout never fires and the server becomes unresponsive.
-
-**Verified behavior:**
-- `setTimeout(() => interrupt[0] = 1, 30000)` is queued but Pyodide never yields
-  to the event loop in a tight loop, so the callback never runs.
-- Same behavior with `runPythonAsync` and `runPython`.
-- Calling `worker.terminate()` on a Bun Worker **does** kill the Pyodide process
-  instantly (~3s). Tested and confirmed working.
-
-**Proposed Fix:** Refactor `PyodidePythonEnvironment` to run inside a Bun Worker.
-- Each session spawns a Worker that owns its Pyodide instance.
-- `runCode` posts a message to the worker and awaits a response.
-- A `Promise.race` with a `setTimeout` rejects on timeout.
-- On timeout, call `worker.terminate()` and spawn a replacement worker.
-- On session cleanup, terminate the worker.
+## ✅ DONE — 3. Execution Timeout ⏱️
+Implemented: each session runs in a dedicated Bun `Worker` so timeouts are enforced via OS-level process termination.
+- `pyodide.setInterruptBuffer()` + `Uint8Array` does **not** stop CPU-bound infinite loops in Bun + Pyodide 0.29, so the previous approach was replaced entirely.
+- Each `PyodidePythonEnvironment` spawns a Worker that owns its Pyodide instance.
+- `runCode` posts `{ type: "runCode", code, files }` and races against `config.executionTimeoutMs`.
+- On timeout: `worker.terminate()` hard-kills the process (~3s), then a fresh worker is respawned so the session remains usable.
+- On unexpected worker error: same kill + respawn path.
+- Pre-execution validation (file count, file size, missing fields) still happens in the main thread for fast fail.
 
 Benefits:
-- Hard timeouts actually work (OS-level process termination)
+- Hard timeouts actually work (verified with `while True: pass`)
 - Sessions are truly isolated (separate event loops)
 - CPU-heavy code doesn't block the main server thread
-- Cleaner session teardown (no leaked Pyodide heaps in main process)
+- Cleaner session teardown
 
-Trade-offs:
-- Slightly higher memory per session (worker overhead)
-- Message-passing overhead for file I/O (must serialize FS ops)
-
-Files to change: `src/service/python-interpreter.ts` (major refactor),
-`src/service/session-manager.ts` (adapt to worker lifecycle)
+Files: `src/service/python-worker.ts` (new), `src/service/python-interpreter.ts` (major refactor)
 
 ---
 

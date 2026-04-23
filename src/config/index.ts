@@ -14,6 +14,12 @@ function getEnvString(name: string, defaultValue: string): string {
   return process.env[name] || defaultValue;
 }
 
+function getEnvBool(name: string, defaultValue: boolean): boolean {
+  const val = process.env[name];
+  if (val === undefined || val === "") return defaultValue;
+  return val === "1" || val === "true";
+}
+
 export const config = {
   port: getEnvInt("PORT", 3080),
   sessionTimeoutMinutes: getEnvInt("SESSION_TIMEOUT_MINUTES", 10),
@@ -22,6 +28,8 @@ export const config = {
   maxFilesPerRequest: getEnvInt("MAX_FILES_PER_REQUEST", 10),
   rateLimitRequestsPerMin: getEnvInt("RATE_LIMIT_REQUESTS_PER_MIN", 10),
   logLevel: getEnvString("LOG_LEVEL", "info"),
+  logFilePath: getEnvString("LOG_FILE_PATH", "./logs/app.log"),
+  isProduction: getEnvBool("NODE_ENV_PRODUCTION", false),
 } as const;
 
 // Validate logical constraints

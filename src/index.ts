@@ -1,20 +1,37 @@
 import { Elysia, t } from "elysia";
 import { openapi } from "@elysiajs/openapi";
+import { randomUUID } from "crypto";
 import { SessionManager } from "./service/session-manager";
 import { config } from "./config";
+import { logixlysiaIns, logger, createRequestLogger } from "./logger";
 
 const sessionManager = new SessionManager(config.sessionTimeoutMinutes);
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 30000;
 
 const app = new Elysia()
+  .onRequest(({ set, request }) => {
+    const requestId = request.headers.get("x-request-id") || randomUUID();
+    set.headers["x-request-id"] = requestId;
+  })
+  .use(logixlysiaIns)
   .use(openapi())
   .post(
     "/exec",
-    async ({ body, query }) => {
+    async ({ body, query, store, request }) => {
       const { code, files = [] } = body;
       const { sessionId } = query;
+      const requestId = request.headers.get("x-request-id") || undefined;
+
+      const pinoFromStore = store.pino;
+      const reqLogger = pinoFromStore
+        ? pinoFromStore.child({ sessionId, requestId })
+        : createRequestLogger({ sessionId, requestId });
 
       if (!sessionId) {
+        reqLogger.warn(
+          { reason: "missing_session_id" },
+          "Rejecting request: missing sessionId",
+        );
         return {
           success: false,
           error: {
@@ -25,6 +42,10 @@ const app = new Elysia()
       }
 
       if (files.length > config.maxFilesPerRequest) {
+        reqLogger.warn(
+          { fileCount: files.length, maxAllowed: config.maxFilesPerRequest },
+          "Resource limit hit: too many files",
+        );
         return {
           success: false,
           error: {
@@ -36,19 +57,25 @@ const app = new Elysia()
 
       try {
         const session = await sessionManager.getOrCreateSession(sessionId);
-        const environment = session.environment;
+        reqLogger.info(
+          { sessionAgeMs: Date.now() - session.createdAt },
+          "Session acquired",
+        );
 
-        const result = await environment.runCode(code, files);
+        const result = await session.environment.runCode(code, files);
+        reqLogger.info(
+          { success: result.success, runtimeMs: result.code_runtime },
+          "Execution finished",
+        );
 
         if (!result.success) {
+          reqLogger.warn({ errorType: result.error?.type }, "Execution failed");
           return result as any;
         }
 
-        return {
-          success: true,
-          result,
-        };
+        return { success: true, result };
       } catch (error: any) {
+        reqLogger.error({ err: error }, "Unhandled error during execution");
         return {
           success: false,
           error: {
@@ -84,37 +111,38 @@ const app = new Elysia()
   }))
   .listen(config.port);
 
-console.log(
-  `vivarium is running at ${app.server?.hostname}:${app.server?.port}`,
+logger.info(
+  { host: app.server?.hostname, port: app.server?.port },
+  "vivarium is running",
 );
 
 const handleShutdown = async (signal: string) => {
-  console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
+  logger.info({ signal }, "Starting graceful shutdown");
 
   const shutdownTimeout = setTimeout(() => {
-    console.error(
-      `Graceful shutdown timed out after ${GRACEFUL_SHUTDOWN_TIMEOUT_MS}ms. Forcing exit.`,
+    logger.fatal(
+      { gracefulTimeoutMs: GRACEFUL_SHUTDOWN_TIMEOUT_MS },
+      "Graceful shutdown timed out, forcing exit",
     );
     process.exit(1);
   }, GRACEFUL_SHUTDOWN_TIMEOUT_MS);
 
   try {
     if (app.server) {
-      console.log("Stopping new connections...");
+      logger.info("Stopping new connections");
       await app.stop();
-      console.log("Server stopped accepting new connections");
+      logger.info("Server stopped");
     }
 
-    console.log("Shutting down session manager...");
+    logger.info("Shutting down session manager");
     await sessionManager.shutdown();
-    console.log("Session manager shutdown complete");
+    logger.info("Session manager shutdown complete");
 
     clearTimeout(shutdownTimeout);
-
-    console.log("Graceful shutdown complete");
+    logger.info("Graceful shutdown complete");
     process.exit(0);
   } catch (error) {
-    console.error("Error during graceful shutdown:", error);
+    logger.fatal({ err: error }, "Error during graceful shutdown");
     clearTimeout(shutdownTimeout);
     process.exit(1);
   }

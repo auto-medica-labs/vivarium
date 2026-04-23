@@ -7,6 +7,7 @@
   "dependencies": {
     "@elysiajs/openapi": "^1.4.11",
     "elysia": "latest",
+    "logixlysia": "^6.3.1",
     "pyodide": "^0.29.0"
   },
   "devDependencies": {

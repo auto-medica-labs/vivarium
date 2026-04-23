@@ -1,4 +1,5 @@
 import { PyodidePythonEnvironment } from "./python-interpreter";
+import { logger } from "../logger";
 
 interface Session {
   id: string;
@@ -48,7 +49,7 @@ export class SessionManager {
       throw new Error(`Session with id ${sessionId} already exists`);
     }
 
-    console.log(`Creating new session: ${sessionId}`);
+    logger.info({ sessionId }, "Creating new session");
     const environment = new PyodidePythonEnvironment();
     await environment.init();
 
@@ -60,7 +61,7 @@ export class SessionManager {
     };
 
     this.sessions.set(sessionId, session);
-    console.log(`Session created: ${sessionId}`);
+    logger.info({ sessionId }, "Session created");
     return session;
   }
 
@@ -102,15 +103,15 @@ export class SessionManager {
       return false;
     }
 
-    console.log(`Removing session: ${sessionId}`);
+    logger.info({ sessionId }, "Removing session");
     try {
       await session.environment.terminate();
     } catch (error) {
-      console.error(`Error cleaning up session ${sessionId}:`, error);
+      logger.error({ sessionId, err: error }, "Error cleaning up session");
     }
 
     this.sessions.delete(sessionId);
-    console.log(`Session removed: ${sessionId}`);
+    logger.info({ sessionId }, "Session removed");
     return true;
   }
 
@@ -141,11 +142,16 @@ export class SessionManager {
 
     // Remove expired sessions
     if (expiredSessions.length > 0) {
-      console.log(`Cleaning up ${expiredSessions.length} expired session(s)`);
+      logger.info({ expiredCount: expiredSessions.length }, "Cleaning up expired sessions");
       for (const sessionId of expiredSessions) {
         await this.removeSession(sessionId);
       }
     }
+
+    logger.info(
+      { activeSessions: this.sessions.size },
+      "Session cleanup cycle complete"
+    );
 
     return expiredSessions.length;
   }
@@ -189,7 +195,7 @@ export class SessionManager {
    * Removes all sessions and stops the cleanup interval
    */
   async shutdown(): Promise<void> {
-    console.log("Shutting down SessionManager...");
+    logger.info("Shutting down SessionManager");
     this.stopCleanupInterval();
 
     const sessionIds = Array.from(this.sessions.keys());
@@ -197,6 +203,6 @@ export class SessionManager {
       await this.removeSession(sessionId);
     }
 
-    console.log("SessionManager shutdown complete");
+    logger.info("SessionManager shutdown complete");
   }
 }

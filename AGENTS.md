@@ -33,15 +33,26 @@ Files: `src/service/python-worker.ts` (new), `src/service/python-interpreter.ts`
 
 ---
 
-## 4. Structured Logging 📊 CRITICAL
-Problem: console.log statements are not production-ready (no levels, timestamps, context).
-Fixes:
-- Add a logging library (e.g. pino or winston)
-- Replace all console.log with structured logger
-- Log levels: error, warn, info, debug
-- Add request context (sessionId, requestId) to all logs
-- Log execution metrics (duration, memory usage per session)
-Files: src/index.ts, src/service/session-manager.ts, src/service/python-interpreter.ts
+## ✅ DONE — 4. Structured Logging 📊 CRITICAL
+Implemented: `logixlysia` for HTTP access logs + shared `pino` instance for application logs.
+- Single `logixlysia` instance configured with `pino` backend in `src/logger.ts`
+- All `console.log` / `console.error` / `console.warn` removed from `src/`
+- Log levels: `fatal`, `error`, `warn`, `info`, `debug` (controlled by `LOG_LEVEL`)
+- Request context: every `/exec` request binds `sessionId` + `requestId` to a child logger
+- Custom `x-request-id` header supported (auto-generated if missing, returned in response headers)
+- Execution metrics logged: `runtimeMs`, `fileCount`, `codeLength`, `sessionAgeMs`
+- Sensitive field redaction: `b64_data`, `token`, `password`, `apiKey` are stripped globally
+- Production mode (`NODE_ENV_PRODUCTION=true`): writes NDJSON to `LOG_FILE_PATH` **and** stdout
+- Dev mode: stdout JSON logs + colored HTTP access logs + startup banner
+- `messageKey: "msg"` workaround for `logixlysia` bug that outputs `undefined` key
+- Graceful shutdown emits structured logs with `signal` context; timeout emits `fatal` level log
+
+Verified via smoke test:
+- Startup, session create/acquire/remove, execution lifecycle, resource-limit warnings, timeout, and shutdown all produce proper structured JSON
+- Custom `x-request-id` propagates correctly through request → handler → interpreter → log file
+- No sensitive data (`b64_data`) leaks into logs
+
+Files: `src/logger.ts` (new), `src/index.ts`, `src/service/session-manager.ts`, `src/service/python-interpreter.ts`, `.env.example`
 
 ## 5. Rate Limiting 🛡️ CRITICAL
 Problem: No protection against abuse/DDoS.

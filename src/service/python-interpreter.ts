@@ -1,5 +1,6 @@
 import { CodeExecutionResponse, PythonEnvironment } from "./types";
 import { config } from "../config";
+import { logger } from "../logger";
 
 function getBase64ByteSize(base64: string): number {
   let padding = 0;
@@ -87,6 +88,11 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
     files: { filename: string; b64_data: string }[],
   ): Promise<CodeExecutionResponse> {
     const startCode = Date.now();
+    const reqLogger = logger.child({ requestId: `run-${this.messageId}` });
+    reqLogger.info(
+      { fileCount: files.length, codeLength: code.length },
+      "Starting code execution"
+    );
 
     // Validate file count
     if (files.length > config.maxFilesPerRequest) {
@@ -150,9 +156,17 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
 
     try {
       const response = await Promise.race([runPromise, timeoutPromise]);
+      reqLogger.info(
+        { success: response.result.success, runtimeMs: response.result.code_runtime },
+        "Code execution response ready"
+      );
       return response.result;
     } catch (error: any) {
       if (error.message === "EXECUTION_TIMEOUT") {
+        reqLogger.error(
+          { durationMs: config.executionTimeoutMs },
+          "Execution timed out, respawning worker"
+        );
         // Hard kill the worker and respawn
         if (this.worker) {
           this.worker.terminate();
@@ -160,7 +174,7 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
         }
         await this.init();
 
-        return {
+        const result = {
           success: false,
           error: {
             type: "timeout",
@@ -170,8 +184,14 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
           std_err: "",
           code_runtime: config.executionTimeoutMs,
         };
+        reqLogger.info(
+          { success: result.success, runtimeMs: result.code_runtime },
+          "Code execution response ready"
+        );
+        return result;
       }
 
+      reqLogger.error({ err: error }, "Worker error, respawning");
       // Unexpected worker error — respawn for future requests
       if (this.worker) {
         this.worker.terminate();
@@ -179,7 +199,7 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
       }
       await this.init();
 
-      return {
+      const result = {
         success: false,
         error: {
           type: "system",
@@ -189,6 +209,11 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
         std_err: "",
         code_runtime: Date.now() - startCode,
       };
+      reqLogger.info(
+        { success: result.success, runtimeMs: result.code_runtime },
+        "Code execution response ready"
+      );
+      return result;
     }
   }
 }

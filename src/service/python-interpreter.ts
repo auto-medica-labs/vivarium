@@ -7,6 +7,7 @@ import { waitFor } from "../utils/async-utils";
 import { promises as fs } from "fs";
 import * as path from "path";
 import { CodeExecutionResponse, FileData, PythonEnvironment } from "./types";
+import { config } from "../config";
 
 const pythonEnvironmentHomeDir = "/home/earth";
 const defaultDirectoryOuterPath = "default_python_home";
@@ -235,6 +236,22 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
     const startCode = Date.now();
     let pyodide = this.pyodide!;
     let result: CodeExecutionResponse = { success: true };
+    let timedOut = false;
+
+    // Validate file count
+    if (files.length > config.maxFilesPerRequest) {
+      return {
+        success: false,
+        error: {
+          type: "resource_limit",
+          message: `Too many files. Maximum allowed is ${config.maxFilesPerRequest}, received ${files.length}`,
+        },
+        std_out: "",
+        std_err: "",
+        code_runtime: Date.now() - startCode,
+      };
+    }
+
     try {
       // load available and needed packages - only supports pyodide built-in packages
       await pyodide.loadPackagesFromImports(code);
@@ -242,26 +259,58 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
       //
       // write the input files to the pyodide file system
       //
-      files.forEach((f) => {
+      for (const f of files) {
         if (f.filename == undefined || f.b64_data == undefined) {
-          result.success = false;
-          result.error = {
-            type: "parsing",
-            message: "file data is missing for: " + JSON.stringify(f),
+          return {
+            success: false,
+            error: {
+              type: "parsing",
+              message: "file data is missing for: " + JSON.stringify(f),
+            },
+            std_out: "",
+            std_err: "",
+            code_runtime: Date.now() - startCode,
           };
-          return result;
+        }
+        const fileBytes = this.base64ToBytes(f.b64_data);
+        if (fileBytes.length > config.maxFileSizeBytes) {
+          return {
+            success: false,
+            error: {
+              type: "resource_limit",
+              message: `File "${f.filename}" exceeds maximum size of ${config.maxFileSizeBytes} bytes`,
+            },
+            std_out: "",
+            std_err: "",
+            code_runtime: Date.now() - startCode,
+          };
         }
         // TODO make sure to create subdirectories if the file is in a subdirectory path
         pyodide.FS.writeFile(
-          pyodide?.PATH.join2(pythonEnvironmentHomeDir, f.filename),
-          this.base64ToBytes(f.b64_data),
+          pyodide.PATH.join2(pythonEnvironmentHomeDir, f.filename),
+          fileBytes,
         );
-      });
+      }
 
       //
       // !! here is where the code is actually executed !!
       //
-      let interpreterResult = await pyodide.runPythonAsync(code);
+      let interpreterResult: any;
+
+      timedOut = false;
+      this.interrupt[0] = 0;
+      const timeoutId = setTimeout(() => {
+        timedOut = true;
+        this.interrupt[0] = 1;
+      }, config.executionTimeoutMs);
+
+      try {
+        interpreterResult = await pyodide.runPythonAsync(code);
+      } finally {
+        clearTimeout(timeoutId);
+        this.interrupt[0] = 0;
+      }
+
       //
       // soak up newly created files and return them as output
       //
@@ -280,7 +329,7 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
           return {
             filename: f.slice(pythonEnvironmentHomeDir.length + 1),
             b64_data: this.readFileAsBase64(f),
-          }; //"content": decodeBase64ToText(readFileAsBase64(f))
+          };
         });
 
       console.log(
@@ -298,7 +347,7 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
 
       let result_reporting = "";
       if (interpreterResult != undefined) {
-        result_reporting = result.toString().replace(/\n/g, "\\n");
+        result_reporting = interpreterResult.toString().replace(/\n/g, "\\n");
       }
 
       console.log(
@@ -315,33 +364,38 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
       result.final_expression = interpreterResult;
       result.success = true;
     } catch (error: any) {
-      // enrich error message with more code context
       let errorMsg = error.toString();
-      // check for File "<exec>", line N, in <module> and extract the line number
-      let lineMatch = errorMsg.match(/File "<exec>", line (\d+)/);
-      console.log("lineMatch", lineMatch);
-      if (lineMatch != null) {
-        let lineNum = parseInt(lineMatch[1]);
-        let codeLines = code.split("\n");
-        let startLine = Math.max(1, lineNum - 4);
-        let endLine = Math.min(codeLines.length, lineNum + 4);
-        let codeContext = codeLines
-          .slice(startLine - 1, endLine)
-          .map((line, idx) => {
-            return startLine + idx + ": " + line;
-          })
-          .join("\n");
-        errorMsg = errorMsg + "\n\nCode context:\n" + codeContext;
+
+      if (timedOut) {
+        errorMsg = `Execution timed out after ${config.executionTimeoutMs}ms`;
+        result.error = { type: "timeout", message: errorMsg };
+      } else {
+        // enrich error message with more code context
+        let lineMatch = errorMsg.match(/File "<exec>", line (\d+)/);
+        console.log("lineMatch", lineMatch);
+        if (lineMatch != null) {
+          let lineNum = parseInt(lineMatch[1]);
+          let codeLines = code.split("\n");
+          let startLine = Math.max(1, lineNum - 4);
+          let endLine = Math.min(codeLines.length, lineNum + 4);
+          let codeContext = codeLines
+            .slice(startLine - 1, endLine)
+            .map((line, idx) => {
+              return startLine + idx + ": " + line;
+            })
+            .join("\n");
+          errorMsg = errorMsg + "\n\nCode context:\n" + codeContext;
+        }
+
+        console.error(
+          "[Failure] Code:",
+          code.replace(/\n/g, "\\n"),
+          "Error:",
+          errorMsg.replace(/\n/g, "\\n"),
+        );
+
+        result.error = { type: error.type || "execution", message: errorMsg };
       }
-
-      console.error(
-        "[Failure] Code:",
-        code.replace(/\n/g, "\\n"),
-        "Error:",
-        errorMsg.replace(/\n/g, "\\n"),
-      );
-
-      result.error = { type: error.type, message: errorMsg };
       result.success = false;
     }
 

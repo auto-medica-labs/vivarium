@@ -1,8 +1,9 @@
 import { Elysia, t } from "elysia";
 import { openapi } from "@elysiajs/openapi";
 import { SessionManager } from "./service/session-manager";
+import { config } from "./config";
 
-const sessionManager = new SessionManager();
+const sessionManager = new SessionManager(config.sessionTimeoutMinutes);
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 30000;
 
 const app = new Elysia()
@@ -23,11 +24,25 @@ const app = new Elysia()
         };
       }
 
+      if (files.length > config.maxFilesPerRequest) {
+        return {
+          success: false,
+          error: {
+            type: "resource_limit",
+            message: `Too many files. Maximum allowed is ${config.maxFilesPerRequest}, received ${files.length}`,
+          },
+        };
+      }
+
       try {
         const session = await sessionManager.getOrCreateSession(sessionId);
         const environment = session.environment;
 
         const result = await environment.runCode(code, files);
+
+        if (!result.success) {
+          return result as any;
+        }
 
         return {
           success: true,
@@ -37,7 +52,7 @@ const app = new Elysia()
         return {
           success: false,
           error: {
-            type: "execution",
+            type: "system",
             message: error.message || "Unknown error occurred",
           },
         };
@@ -67,7 +82,7 @@ const app = new Elysia()
   .get("/sessions", () => ({
     sessions: sessionManager.getSessionsInfo(),
   }))
-  .listen(3080);
+  .listen(config.port);
 
 console.log(
   `vivarium is running at ${app.server?.hostname}:${app.server?.port}`,

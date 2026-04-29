@@ -1,3 +1,5 @@
+<img width="500" alt="image" src="https://github.com/user-attachments/assets/b7f3d829-3656-423b-bf36-fb103658dee1" />
+
 # Vivarium - Python Sandbox Web Server
 
 > A vivarium (Latin for 'place of life'; pl. vivaria or vivariums) is an area,

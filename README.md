@@ -1,4 +1,4 @@
-<img width="500" alt="image" src="https://github.com/user-attachments/assets/b7f3d829-3656-423b-bf36-fb103658dee1" />
+<img width="800" alt="image" src="https://github.com/user-attachments/assets/b7f3d829-3656-423b-bf36-fb103658dee1" />
 
 # Vivarium - Python Sandbox Web Server
 

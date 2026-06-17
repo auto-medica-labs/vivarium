@@ -54,40 +54,20 @@ Verified via smoke test:
 
 Files: `src/logger.ts` (new), `src/index.ts`, `src/service/session-manager.ts`, `src/service/python-interpreter.ts`, `.env.example`
 
-## 5. Rate Limiting 🛡️ CRITICAL
-Problem: No protection against abuse/DDoS.
-Fixes:
-- Add rate limiting middleware (e.g. elysia-rate-limit)
-- Limit requests per IP/session (e.g. 10 req/min)
-- Separate limits for /exec endpoint (more restrictive)
-- Include rate limit headers in responses
-Files: src/index.ts
+## Remaining work → see PLAN/
 
-## 6. Enhanced Error Handling ❌ CRITICAL
-Problem: Limited error context, no error tracking.
-Fixes:
-- Wrap all async operations with proper try/catch
-- Add global error handler middleware
-- Categorize errors (validation, execution, system, timeout)
-- Add error codes and retry guidance
-- Log full error stack traces with context
-Files: src/index.ts, src/service/python-interpreter.ts
+The original items 5-8 below have been reorganized into a phased production launch plan.
+See individual plan files for details:
 
-## 7. Enhanced Health Monitoring 💓 CRITICAL
-Problem: Basic health check doesn't verify system functionality.
-Fixes:
-- Add liveness endpoint (GET /health) - check if server is running
-- Add readiness endpoint (GET /ready) - check if server can accept requests
-- Verify Pyodide is loaded in readiness check
-- Monitor memory usage and active session count
-- Return degraded status if approaching resource limits
-Files: src/index.ts
+| Plan | File | Effort |
+|---|---|---|
+| Phase 0 — Cleanup (dead code, pin deps) | [PLAN/phase-0-cleanup.md](PLAN/phase-0-cleanup.md) | 30 min |
+| Phase 1 — Ship blockers (rate limiting, session cap, error handler, readiness, Dockerfile) | [PLAN/phase-1-ship-blockers.md](PLAN/phase-1-ship-blockers.md) | ~2 hrs |
+| Phase 2 — Observability (Prometheus metrics, CORS, concurrency lock) | [PLAN/phase-2-observability.md](PLAN/phase-2-observability.md) | ~1.5 hrs |
+| Phase 3 — Testing (integration tests with Bun test runner) | [PLAN/phase-3-testing.md](PLAN/phase-3-testing.md) | ~3 hrs |
 
-## 8. Process Monitoring 🔍 IMPORTANT
-Problem: No visibility into server health during runtime.
-Fixes:
-- Add Prometheus-style metrics endpoint (GET /metrics)
-- Track: active sessions, execution count, success/error rates, avg execution time
-- Expose memory usage, CPU usage
-- Use a simple metrics library (e.g. prom-client)
-Files: src/index.ts, src/service/session-manager.ts
+Original items mapped to phases:
+- #5 Rate Limiting → Phase 1
+- #6 Enhanced Error Handling → Phase 1 (global error handler) + Phase 2 (concurrency lock)
+- #7 Enhanced Health Monitoring → Phase 1 (readiness endpoint)
+- #8 Process Monitoring → Phase 2 (Prometheus metrics)

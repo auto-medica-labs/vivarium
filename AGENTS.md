@@ -61,7 +61,7 @@ See individual plan files for details:
 
 | Plan | File | Effort |
 |---|---|---|
-| Phase 0 — Cleanup (dead code, pin deps) | [PLAN/phase-0-cleanup.md](PLAN/phase-0-cleanup.md) | 30 min |
+| ✅ Phase 0 — Cleanup (dead code, pin deps, filter profraw) | Complete | 30 min |
 | Phase 1 — Ship blockers (rate limiting, session cap, error handler, readiness, Dockerfile) | [PLAN/phase-1-ship-blockers.md](PLAN/phase-1-ship-blockers.md) | ~2 hrs |
 | Phase 2 — Observability (Prometheus metrics, CORS, concurrency lock) | [PLAN/phase-2-observability.md](PLAN/phase-2-observability.md) | ~1.5 hrs |
 | Phase 3 — Testing (integration tests with Bun test runner) | [PLAN/phase-3-testing.md](PLAN/phase-3-testing.md) | ~3 hrs |

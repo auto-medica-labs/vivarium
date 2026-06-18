@@ -10,7 +10,7 @@ interface Session {
 
 export class SessionManager {
   private sessions: Map<string, Session> = new Map();
-  private readonly sessionTimeout: number = 10 * 60 * 1000; // 10 minutes in milliseconds
+  private sessionTimeout: number; // 10 minutes in milliseconds
   private cleanupInterval: NodeJS.Timeout | null = null;
   private readonly cleanupIntervalMs: number = 60 * 1000; // Check every minute
 

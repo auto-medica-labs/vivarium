@@ -1,5 +1,4 @@
 import { Elysia, t } from "elysia";
-import { openapi } from "@elysiajs/openapi";
 import { randomUUID } from "crypto";
 import { SessionManager } from "./service/session-manager";
 import { config } from "./config";
@@ -14,7 +13,6 @@ const app = new Elysia()
     set.headers["x-request-id"] = requestId;
   })
   .use(logixlysiaIns)
-  .use(openapi())
   .post(
     "/exec",
     async ({ body, query, store, request }) => {

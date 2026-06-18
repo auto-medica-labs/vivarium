@@ -38,6 +38,9 @@ async function prepareEnvironment() {
     });
     default_file_names.add(filename);
   });
+
+  // Pyodide 314+ emits this profiling file at runtime; don't return it as user output.
+  default_file_names.add("default.profraw");
 }
 
 async function loadEnvironment(): Promise<void> {

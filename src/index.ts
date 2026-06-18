@@ -5,6 +5,7 @@ import { PyodidePythonEnvironment } from "./service/python-interpreter";
 import { config } from "./config";
 import { logixlysiaIns, logger, createRequestLogger } from "./logger";
 import { AppError } from "./errors";
+import { metrics } from "./metrics";
 
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 30000;
 const READINESS_TIMEOUT_MS = 10000;
@@ -70,7 +71,7 @@ const app = new Elysia()
     set.headers["x-request-id"] = requestId;
 
     const path = new URL(request.url).pathname;
-    if (path === "/health" || path === "/ready") {
+    if (path === "/health" || path === "/ready" || path === "/metrics") {
       return;
     }
 
@@ -82,6 +83,10 @@ const app = new Elysia()
     const { allowed, retryAfter } = rateLimiter.isAllowed(ip);
     if (!allowed) {
       logger.warn({ ip, path, retryAfter }, "Rate limit exceeded");
+      if (path === "/exec") {
+        metrics.incRequests("rate_limited");
+        metrics.incExecutions();
+      }
       set.status = 429;
       if (retryAfter !== undefined) {
         set.headers["Retry-After"] = String(retryAfter);
@@ -94,9 +99,18 @@ const app = new Elysia()
         },
       };
     }
+
+    if (path === "/exec") {
+      metrics.incExecutions();
+    }
   })
-  .onError(({ code, error, set }) => {
+  .onError(({ code, error, set, request }) => {
+    const path = new URL(request.url).pathname;
+
     if (code === "VALIDATION") {
+      if (path === "/exec") {
+        metrics.incRequests("error");
+      }
       set.status = 400;
       return {
         success: false,
@@ -110,6 +124,10 @@ const app = new Elysia()
         { errorType: error.type, statusCode: error.statusCode },
         "Application error",
       );
+      if (path === "/exec") {
+        const status = error.type === "timeout" ? "timeout" : "error";
+        metrics.incRequests(status);
+      }
       return {
         success: false,
         error: { type: error.type, message: error.message },
@@ -117,10 +135,14 @@ const app = new Elysia()
     }
 
     logger.error({ err: error }, "Unhandled error");
+    if (path === "/exec") {
+      metrics.incRequests("error");
+    }
     set.status = 500;
+    const errorMessage = error instanceof Error ? error.message : String(error);
     const message = config.isProduction
       ? "Internal server error"
-      : error.message || "Unknown error";
+      : errorMessage || "Unknown error";
     return {
       success: false,
       error: { type: "system", message },
@@ -182,6 +204,10 @@ const app = new Elysia()
       );
 
       const result = await session.environment.runCode(code, files);
+      metrics.incRequests(result.success ? "success" : "error");
+      if (result.code_runtime !== undefined) {
+        metrics.observeDuration(result.code_runtime);
+      }
       reqLogger.info(
         { success: result.success, runtimeMs: result.code_runtime },
         "Execution finished",
@@ -256,6 +282,10 @@ const app = new Elysia()
   .get("/sessions", () => ({
     sessions: sessionManager.getSessionsInfo(),
   }))
+  .get("/metrics", ({ set }) => {
+    set.headers["Content-Type"] = "text/plain";
+    return metrics.render(sessionManager.getActiveSessionCount());
+  })
   .listen(config.port);
 
 logger.info(

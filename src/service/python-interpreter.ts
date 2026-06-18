@@ -14,6 +14,7 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
   private worker: Worker | null = null;
   private workerUrl: URL;
   private messageId = 0;
+  private runLock: Promise<CodeExecutionResponse> = Promise.resolve() as unknown as Promise<CodeExecutionResponse>;
 
   constructor() {
     this.workerUrl = new URL("./python-worker.ts", import.meta.url);
@@ -139,65 +140,70 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
       }
     }
 
-    if (!this.worker) {
-      await this.init();
-    }
+    const actualRun = async (): Promise<CodeExecutionResponse> => {
+      if (!this.worker) {
+        await this.init();
+      }
 
-    const runPromise = this.sendMessage<{ result: CodeExecutionResponse }>(
-      "runCode",
-      { code, files },
-    );
-
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error("EXECUTION_TIMEOUT")),
-        config.executionTimeoutMs,
-      ),
-    );
-
-    try {
-      const response = await Promise.race([runPromise, timeoutPromise]);
-      reqLogger.info(
-        { success: response.result.success, runtimeMs: response.result.code_runtime },
-        "Code execution response ready"
+      const runPromise = this.sendMessage<{ result: CodeExecutionResponse }>(
+        "runCode",
+        { code, files },
       );
-      return response.result;
-    } catch (error: any) {
-      if (error.message === "EXECUTION_TIMEOUT") {
-        reqLogger.error(
-          { durationMs: config.executionTimeoutMs },
-          "Execution timed out, respawning worker"
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("EXECUTION_TIMEOUT")),
+          config.executionTimeoutMs,
+        ),
+      );
+
+      try {
+        const response = await Promise.race([runPromise, timeoutPromise]);
+        reqLogger.info(
+          { success: response.result.success, runtimeMs: response.result.code_runtime },
+          "Code execution response ready"
         );
-        // Hard kill the worker and respawn
+        return response.result;
+      } catch (error: any) {
+        if (error.message === "EXECUTION_TIMEOUT") {
+          reqLogger.error(
+            { durationMs: config.executionTimeoutMs },
+            "Execution timed out, respawning worker"
+          );
+          // Hard kill the worker and respawn
+          if (this.worker) {
+            this.worker.terminate();
+            this.worker = null;
+          }
+          await this.init();
+
+          reqLogger.error(
+            { durationMs: config.executionTimeoutMs },
+            "Execution timed out"
+          );
+          throw new AppError(
+            "timeout",
+            `Execution timed out after ${config.executionTimeoutMs}ms`,
+          );
+        }
+
+        reqLogger.error({ err: error }, "Worker error, respawning");
+        // Unexpected worker error — respawn for future requests
         if (this.worker) {
           this.worker.terminate();
           this.worker = null;
         }
         await this.init();
 
-        reqLogger.error(
-          { durationMs: config.executionTimeoutMs },
-          "Execution timed out"
-        );
+        reqLogger.error({ err: error }, "Worker error");
         throw new AppError(
-          "timeout",
-          `Execution timed out after ${config.executionTimeoutMs}ms`,
+          "system",
+          error.message || "Unknown worker error",
         );
       }
+    };
 
-      reqLogger.error({ err: error }, "Worker error, respawning");
-      // Unexpected worker error — respawn for future requests
-      if (this.worker) {
-        this.worker.terminate();
-        this.worker = null;
-      }
-      await this.init();
-
-      reqLogger.error({ err: error }, "Worker error");
-      throw new AppError(
-        "system",
-        error.message || "Unknown worker error",
-      );
-    }
+    this.runLock = this.runLock.then(actualRun, actualRun);
+    return this.runLock;
   }
 }

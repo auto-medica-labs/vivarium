@@ -1,73 +1,196 @@
-Production Readiness Improvement Plan
+# Vivarium — Agent Context
 
-## ✅ DONE — 1. Configuration Management ⚙️
-Implemented: centralized `src/config/index.ts` with env var validation and defaults.
-- `PORT`, `SESSION_TIMEOUT_MINUTES`, `EXECUTION_TIMEOUT_MS`, `MAX_FILE_SIZE_BYTES`
-- `MAX_FILES_PER_REQUEST`, `RATE_LIMIT_REQUESTS_PER_MIN`, `LOG_LEVEL`
-- Throws on startup if constraints are violated (e.g. timeout = 0)
-Files: `src/config/index.ts` (new), `.env.example` (new), `src/index.ts`, `src/service/python-interpreter.ts`
+Vivarium is a sandboxed Python execution server. It exposes an HTTP API that
+lets clients run Python code in isolated sessions backed by
+[Pyodide](https://pyodide.org/) (Python in WebAssembly) running inside Bun
+`Worker`s.
 
-## ✅ DONE — 2. Resource Limits (File Count / File Size) 📦
-Implemented: guards before code execution.
-- Rejects requests with files > `MAX_FILES_PER_REQUEST` (default 10)
-- Rejects individual files > `MAX_FILE_SIZE_BYTES` (default 10MB)
-- Returns `{ success: false, error: { type: "resource_limit", message: ... } }`
-Files: `src/index.ts`, `src/service/python-interpreter.ts`
+## Stack
 
-## ✅ DONE — 3. Execution Timeout ⏱️
-Implemented: each session runs in a dedicated Bun `Worker` so timeouts are enforced via OS-level process termination.
-- `pyodide.setInterruptBuffer()` + `Uint8Array` does **not** stop CPU-bound infinite loops in Bun + Pyodide 0.29, so the previous approach was replaced entirely.
-- Each `PyodidePythonEnvironment` spawns a Worker that owns its Pyodide instance.
-- `runCode` posts `{ type: "runCode", code, files }` and races against `config.executionTimeoutMs`.
-- On timeout: `worker.terminate()` hard-kills the process (~3s), then a fresh worker is respawned so the session remains usable.
-- On unexpected worker error: same kill + respawn path.
-- Pre-execution validation (file count, file size, missing fields) still happens in the main thread for fast fail.
+- **Runtime:** Bun (TypeScript, ES modules)
+- **Web framework:** Elysia.js
+- **Python engine:** Pyodide, loaded in a dedicated `Worker` per session
+- **Logs:** `pino` via `logixlysia`
+- **Tests:** Bun's built-in test runner (`bun:test`)
 
-Benefits:
-- Hard timeouts actually work (verified with `while True: pass`)
-- Sessions are truly isolated (separate event loops)
-- CPU-heavy code doesn't block the main server thread
-- Cleaner session teardown
+## Project layout
 
-Files: `src/service/python-worker.ts` (new), `src/service/python-interpreter.ts` (major refactor)
+```
+src/
+├── app.ts                    # Elysia app factory (buildApp) + routes + middleware
+├── config/index.ts           # Environment config with validation and defaults
+├── errors.ts                 # AppError types and HTTP status mapping
+├── index.ts                  # Server bootstrap, listen, graceful shutdown
+├── logger.ts                 # pino / logixlysia setup
+├── metrics.ts                # Prometheus-compatible metrics singleton
+├── service/
+│   ├── python-interpreter.ts # PyodidePythonEnvironment: spawns/communicates with worker
+│   ├── python-worker.ts      # Bun Worker that owns one Pyodide instance
+│   ├── session-manager.ts    # Creates, times out, and tears down sessions
+│   └── types.ts              # Shared TS interfaces
+└── __tests__/
+    └── integration.test.ts   # Full API integration tests
+```
 
----
+## Environment variables
 
-## ✅ DONE — 4. Structured Logging 📊 CRITICAL
-Implemented: `logixlysia` for HTTP access logs + shared `pino` instance for application logs.
-- Single `logixlysia` instance configured with `pino` backend in `src/logger.ts`
-- All `console.log` / `console.error` / `console.warn` removed from `src/`
-- Log levels: `fatal`, `error`, `warn`, `info`, `debug` (controlled by `LOG_LEVEL`)
-- Request context: every `/exec` request binds `sessionId` + `requestId` to a child logger
-- Custom `x-request-id` header supported (auto-generated if missing, returned in response headers)
-- Execution metrics logged: `runtimeMs`, `fileCount`, `codeLength`, `sessionAgeMs`
-- Sensitive field redaction: `b64_data`, `token`, `password`, `apiKey` are stripped globally
-- Production mode (`NODE_ENV_PRODUCTION=true`): writes NDJSON to `LOG_FILE_PATH` **and** stdout
-- Dev mode: stdout JSON logs + colored HTTP access logs + startup banner
-- `messageKey: "msg"` workaround for `logixlysia` bug that outputs `undefined` key
-- Graceful shutdown emits structured logs with `signal` context; timeout emits `fatal` level log
+See `.env.example`. Loaded/validated in `src/config/index.ts`:
 
-Verified via smoke test:
-- Startup, session create/acquire/remove, execution lifecycle, resource-limit warnings, timeout, and shutdown all produce proper structured JSON
-- Custom `x-request-id` propagates correctly through request → handler → interpreter → log file
-- No sensitive data (`b64_data`) leaks into logs
-
-Files: `src/logger.ts` (new), `src/index.ts`, `src/service/session-manager.ts`, `src/service/python-interpreter.ts`, `.env.example`
-
-## Remaining work → see PLAN/
-
-The original items 5-8 below have been reorganized into a phased production launch plan.
-See individual plan files for details:
-
-| Plan | File | Effort |
+| Variable | Default | Purpose |
 |---|---|---|
-| ✅ Phase 0 — Cleanup (dead code, pin deps, filter profraw) | Complete | 30 min |
-| Phase 1 — Ship blockers (rate limiting, session cap, error handler, readiness, Dockerfile) | [PLAN/phase-1-ship-blockers.md](PLAN/phase-1-ship-blockers.md) | ~2 hrs |
-| Phase 2 — Observability (Prometheus metrics, CORS, concurrency lock) | [PLAN/phase-2-observability.md](PLAN/phase-2-observability.md) | ~1.5 hrs |
-| Phase 3 — Testing (integration tests with Bun test runner) | [PLAN/phase-3-testing.md](PLAN/phase-3-testing.md) | ~3 hrs |
+| `PORT` | 3080 | HTTP port |
+| `SESSION_TIMEOUT_MINUTES` | 10 | Inactivity before a session is cleaned up |
+| `EXECUTION_TIMEOUT_MS` | 30000 | Hard kill limit for a single `runCode` |
+| `MAX_FILE_SIZE_BYTES` | 10485760 | Per-upload file size limit |
+| `MAX_FILES_PER_REQUEST` | 10 | Max files per `/exec` request |
+| `RATE_LIMIT_REQUESTS_PER_MIN` | 10 | Per-IP request rate limit |
+| `MAX_SESSIONS` | 20 | Active session cap |
+| `LOG_LEVEL` | info | pino log level |
+| `LOG_FILE_PATH` | ./logs/app.log | Production log destination |
+| `NODE_ENV_PRODUCTION` | false | Enables NDJSON file logging |
 
-Original items mapped to phases:
-- #5 Rate Limiting → Phase 1
-- #6 Enhanced Error Handling → Phase 1 (global error handler) + Phase 2 (concurrency lock)
-- #7 Enhanced Health Monitoring → Phase 1 (readiness endpoint)
-- #8 Process Monitoring → Phase 2 (Prometheus metrics)
+Config throws on startup if a constraint is violated (e.g. timeout = 0).
+
+## API
+
+### `POST /exec?sessionId=<id>`
+
+Body:
+
+```json
+{
+  "code": "print('hello')",
+  "files": [
+    { "filename": "data.csv", "b64_data": "aGVsbG8=" }
+  ]
+}
+```
+
+Success:
+
+```json
+{
+  "success": true,
+  "result": {
+    "final_expression": "...",
+    "output_files": [],
+    "std_out": "hello\n",
+    "std_err": "",
+    "code_runtime": 123
+  }
+}
+```
+
+Failure:
+
+```json
+{
+  "success": false,
+  "error": {
+    "type": "resource_limit",
+    "message": "..."
+  }
+}
+```
+
+### Other endpoints
+
+- `GET /health` — basic health + active session count
+- `GET /ready` — readiness probe; boots a throwaway Pyodide env and runs `1 + 1`
+- `GET /sessions` — list active sessions with age/idle metadata
+- `GET /metrics` — Prometheus text metrics
+
+## Error types
+
+Handled in `src/errors.ts` and `src/app.ts` `onError`:
+
+| Type | HTTP | When |
+|---|---|---|
+| `validation` | 400 | Invalid/missing params |
+| `resource_limit` | 413 | File count/size, session cap, rate limit |
+| `timeout` | 504 | `EXECUTION_TIMEOUT_MS` exceeded |
+| `execution` | 200* | Python execution errors (e.g. `NameError`) |
+| `system` | 500 | Unexpected server errors |
+
+\* Python errors return HTTP 200 from the handler because the interpreter ran
+successfully; the `success` flag is false.
+
+## Architecture notes
+
+### One Worker per session
+
+`PyodidePythonEnvironment` spawns a Bun `Worker` (`src/service/python-worker.ts`)
+that owns a single Pyodide instance. Messages are `{ id, type, ... }` and the
+main thread waits for a matching response id. This gives true isolation and
+allows hard timeouts via `worker.terminate()`.
+
+### Execution timeout
+
+`python-interpreter.ts` races the worker response against
+`config.executionTimeoutMs`. On timeout it kills the worker, respawns a fresh
+one, and throws `AppError("timeout")`. The session remains usable afterwards.
+
+### Per-session run lock
+
+`runCode` in `python-interpreter.ts` serializes calls through `this.runLock` so
+only one execution per session runs at a time. This avoids re-entrancy issues
+with the single worker.
+
+### Session lifecycle
+
+`SessionManager` keeps a map of sessions and runs a cleanup interval. Sessions
+expire after `SESSION_TIMEOUT_MINUTES` of inactivity. `shutdown()` terminates all
+workers and stops the cleanup interval.
+
+### Logging
+
+- `src/logger.ts` exports a shared `pino` instance.
+- Redacts `b64_data`, `token`, `password`, `apiKey` globally.
+- Production mode writes NDJSON to `LOG_FILE_PATH` plus stdout.
+- Every `/exec` request gets a child logger with `sessionId` and `requestId`.
+- `x-request-id` header is honored and returned.
+
+### Metrics
+
+`src/metrics.ts` is a singleton. `/metrics` renders:
+
+- `vivarium_requests_total{status}`
+- `vivarium_executions_total`
+- `vivarium_active_sessions`
+- `vivarium_memory_usage_bytes`
+- `vivarium_execution_duration_ms` histogram
+
+## Testing
+
+Run:
+
+```bash
+bun test
+```
+
+Tests import `buildApp()` from `src/app.ts` so they can drive the app
+in-process with `app.handle()`. Each test gets a fresh app instance; `afterEach`
+shuts down the session manager and stops the rate limiter.
+
+Important test constraints:
+
+- Pyodide init is slow (~10–12 s per fresh session). The suite takes ~2 minutes.
+- Env vars are set at the top of the test file **before** dynamically importing
+  `buildApp`, because `src/config/index.ts` reads/validates env at import time.
+- The session-cap test has its own 60 s timeout because it creates 3 sessions
+  sequentially.
+
+## Agent guidelines
+
+- **Keep lazy.** Prefer env-driven config over new code. Use `config` from
+  `src/config/index.ts` instead of hard-coding limits.
+- **Avoid adding dependencies.** Bun's test runner, stdlib, and Elysia cover
+  almost everything.
+- **Sensitive data:** never log `b64_data`, tokens, passwords, or API keys. The
+  logger already redacts them.
+- **Errors:** throw `AppError(type, message)` from handlers; the global
+  `onError` will format the response.
+- **Sessions:** if you need to iterate over sessions in tests, use
+  `sessionManager.getSessionsInfo()` or export the manager from `buildApp()`.
+- **Workers:** do not try to interrupt CPU-bound Python from the main thread.
+  Timeouts are enforced by killing and respawning the worker.

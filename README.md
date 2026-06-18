@@ -26,9 +26,14 @@ resource management.
 - ✅ **Package Pre-loading**: Common packages (numpy, matplotlib, pandas) are
   pre-loaded for faster execution
 - ✅ **REST API**: Simple HTTP interface for code execution
-- ✅ **Health Monitoring**: Endpoints for monitoring server health and active
-  sessions
+- ✅ **Health & Readiness Monitoring**: `/health`, `/ready`, `/sessions`, and
+  `/metrics` endpoints
 - ✅ **Automatic Cleanup**: Expired sessions are automatically cleaned up
+- ✅ **Resource Limits**: Configurable caps on file count, file size, active
+  sessions, and request rate
+- ✅ **Structured Logging**: JSON logs via `pino` with request context and
+  sensitive-field redaction
+- ✅ **Integration Tests**: Full API coverage using Bun's built-in test runner
 
 ## Technology Stack
 
@@ -52,7 +57,7 @@ resource management.
 - Pyodide-based Python interpreter
 - Isolated file system per session
 - Pre-loaded common packages (numpy, matplotlib, pandas)
-- Safe execution with interrupt support
+- Safe execution with hard timeouts via Bun Workers
 - File I/O support with base64 encoding
 
 ### API Documentation
@@ -134,6 +139,23 @@ Check server health and get active session count.
 }
 ```
 
+#### GET `/ready` - Readiness Probe
+
+Verify that the Python environment can initialize and execute code.
+
+**Response:**
+
+```json
+{
+  "status": "ready"
+}
+```
+
+#### GET `/metrics` - Prometheus Metrics
+
+Expose request counters, execution durations, and active session gauge in
+Prometheus text format.
+
 #### GET `/sessions` - List Active Sessions
 
 Get information about all active sessions.
@@ -169,8 +191,12 @@ Files are transferred using base64 encoding:
 
 ### Error Types
 
-- `validation`: Missing required parameters
-- `execution`: Python code execution errors
+- `validation`: Missing or invalid parameters
+- `resource_limit`: File count/size, session cap, or rate limit exceeded
+- `timeout`: Code execution exceeded `EXECUTION_TIMEOUT_MS`
+- `execution`: Python code execution errors (includes Python exception names
+  such as `NameError`)
+- `system`: Unexpected server errors
 - `parsing`: File parsing errors
 
 ## Setup and Installation
@@ -192,30 +218,26 @@ bun install
 
 ### Configuration
 
-The server runs on port `3080` by default. You can change this in
-`src/index.ts`.
+Vivarium is configured through environment variables. Copy `.env.example` to
+`.env` and adjust values as needed:
 
-Session timeout is configurable (default: 10 minutes). Modify the
-`SessionManager` constructor in `src/index.ts`:
-
-```typescript
-const sessionManager = new SessionManager(10); // 10 minutes
+```env
+PORT=3080
+SESSION_TIMEOUT_MINUTES=10
+EXECUTION_TIMEOUT_MS=30000
+MAX_FILE_SIZE_BYTES=10485760
+MAX_FILES_PER_REQUEST=10
+RATE_LIMIT_REQUESTS_PER_MIN=10
+MAX_SESSIONS=20
+LOG_LEVEL=info
+LOG_FILE_PATH=./logs/app.log
+NODE_ENV_PRODUCTION=false
 ```
 
 ### Running the Server
 
 ```bash
 bun run src/index.ts
-```
-
-### Environment Variables
-
-Create a `.env` file for configuration:
-
-```env
-PORT=3080
-SESSION_TIMEOUT_MINUTES=10
-PYODIDE_CACHE_DIR=pyodide_cache
 ```
 
 ## Usage Examples
@@ -287,14 +309,33 @@ Each session has an isolated file system with:
 
 ```
 src/
+├── app.ts                    # Elysia app definition and routes
+├── config/                   # Environment configuration
+│   └── index.ts
+├── errors.ts                 # Structured application errors
+├── index.ts                  # Server bootstrap and shutdown
+├── logger.ts                 # Structured logging setup
+├── metrics.ts                # Prometheus metrics
 ├── service/
-│   ├── python-interpreter.ts
-│   ├── session-manager.ts
+│   ├── python-interpreter.ts # Worker-based Pyodide runner
+│   ├── python-worker.ts      # Bun Worker running Pyodide
+│   ├── session-manager.ts    # Session lifecycle management
 │   └── types.ts
-├── utils/
-│   └── async-utils.ts
-└── index.ts
+└── __tests__/
+    └── integration.test.ts   # Integration tests
 ```
+
+### Testing
+
+Run the integration test suite with Bun:
+
+```bash
+bun test
+```
+
+Tests exercise the full API surface, including resource limits, timeouts,
+session lifecycle, rate limiting, and Python errors. They use Bun's built-in
+test runner and require no additional dependencies.
 
 ## Deployment
 
@@ -325,9 +366,9 @@ CMD ["bun", "run", "src/index.ts"]
 ### Best Practices
 
 - Use unique session IDs for each user/request
-- Monitor active sessions regularly
-- Set appropriate session timeouts based on your use case
-- Consider rate limiting for public APIs
+- Monitor active sessions via `/sessions` and `/metrics`
+- Set appropriate timeouts and resource limits based on your use case
+- Keep `NODE_ENV_PRODUCTION=true` in production for NDJSON log output
 
 ## Contributing
 

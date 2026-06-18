@@ -1,16 +1,130 @@
 import { Elysia, t } from "elysia";
 import { randomUUID } from "crypto";
 import { SessionManager } from "./service/session-manager";
+import { PyodidePythonEnvironment } from "./service/python-interpreter";
 import { config } from "./config";
 import { logixlysiaIns, logger, createRequestLogger } from "./logger";
+import { AppError } from "./errors";
 
-const sessionManager = new SessionManager(config.sessionTimeoutMinutes);
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 30000;
+const READINESS_TIMEOUT_MS = 10000;
+
+function getBase64ByteSize(base64: string): number {
+  let padding = 0;
+  if (base64.endsWith("==")) padding = 2;
+  else if (base64.endsWith("=")) padding = 1;
+  return (base64.length * 3) / 4 - padding;
+}
+
+class RateLimiter {
+  private readonly windowMs = 60 * 1000;
+  private readonly entries = new Map<string, { count: number; resetAt: number }>();
+  private readonly cleanupInterval: NodeJS.Timeout;
+
+  constructor(private readonly limit: number) {
+    this.cleanupInterval = setInterval(() => this.cleanup(), this.windowMs);
+  }
+
+  isAllowed(ip: string): { allowed: boolean; retryAfter?: number } {
+    const now = Date.now();
+    let entry = this.entries.get(ip);
+    if (!entry || now > entry.resetAt) {
+      entry = { count: 0, resetAt: now + this.windowMs };
+      this.entries.set(ip, entry);
+    }
+
+    entry.count++;
+
+    if (entry.count > this.limit) {
+      return {
+        allowed: false,
+        retryAfter: Math.max(0, Math.ceil((entry.resetAt - now) / 1000)),
+      };
+    }
+    return { allowed: true };
+  }
+
+  stop(): void {
+    clearInterval(this.cleanupInterval);
+  }
+
+  private cleanup(): void {
+    const now = Date.now();
+    for (const [ip, entry] of this.entries) {
+      if (now > entry.resetAt) {
+        this.entries.delete(ip);
+      }
+    }
+  }
+}
+
+const rateLimiter = new RateLimiter(config.rateLimitRequestsPerMin);
+const sessionManager = new SessionManager(
+  config.sessionTimeoutMinutes,
+  config.maxSessions,
+);
 
 const app = new Elysia()
-  .onRequest(({ set, request }) => {
+  .onRequest(({ set, request, server }) => {
     const requestId = request.headers.get("x-request-id") || randomUUID();
     set.headers["x-request-id"] = requestId;
+
+    const path = new URL(request.url).pathname;
+    if (path === "/health" || path === "/ready") {
+      return;
+    }
+
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      server?.requestIP?.(request)?.address ||
+      "unknown";
+
+    const { allowed, retryAfter } = rateLimiter.isAllowed(ip);
+    if (!allowed) {
+      logger.warn({ ip, path, retryAfter }, "Rate limit exceeded");
+      set.status = 429;
+      if (retryAfter !== undefined) {
+        set.headers["Retry-After"] = String(retryAfter);
+      }
+      return {
+        success: false,
+        error: {
+          type: "rate_limit",
+          message: "Rate limit exceeded. Try again later.",
+        },
+      };
+    }
+  })
+  .onError(({ code, error, set }) => {
+    if (code === "VALIDATION") {
+      set.status = 400;
+      return {
+        success: false,
+        error: { type: "validation", message: error.message },
+      };
+    }
+
+    if (error instanceof AppError) {
+      set.status = error.statusCode;
+      logger.warn(
+        { errorType: error.type, statusCode: error.statusCode },
+        "Application error",
+      );
+      return {
+        success: false,
+        error: { type: error.type, message: error.message },
+      };
+    }
+
+    logger.error({ err: error }, "Unhandled error");
+    set.status = 500;
+    const message = config.isProduction
+      ? "Internal server error"
+      : error.message || "Unknown error";
+    return {
+      success: false,
+      error: { type: "system", message },
+    };
   })
   .use(logixlysiaIns)
   .post(
@@ -30,13 +144,10 @@ const app = new Elysia()
           { reason: "missing_session_id" },
           "Rejecting request: missing sessionId",
         );
-        return {
-          success: false,
-          error: {
-            type: "validation",
-            message: "sessionId query parameter is required",
-          },
-        };
+        throw new AppError(
+          "validation",
+          "sessionId query parameter is required",
+        );
       }
 
       if (files.length > config.maxFilesPerRequest) {
@@ -44,44 +155,44 @@ const app = new Elysia()
           { fileCount: files.length, maxAllowed: config.maxFilesPerRequest },
           "Resource limit hit: too many files",
         );
-        return {
-          success: false,
-          error: {
-            type: "resource_limit",
-            message: `Too many files. Maximum allowed is ${config.maxFilesPerRequest}, received ${files.length}`,
-          },
-        };
+        throw new AppError(
+          "resource_limit",
+          `Too many files. Maximum allowed is ${config.maxFilesPerRequest}, received ${files.length}`,
+        );
       }
 
-      try {
-        const session = await sessionManager.getOrCreateSession(sessionId);
-        reqLogger.info(
-          { sessionAgeMs: Date.now() - session.createdAt },
-          "Session acquired",
-        );
-
-        const result = await session.environment.runCode(code, files);
-        reqLogger.info(
-          { success: result.success, runtimeMs: result.code_runtime },
-          "Execution finished",
-        );
-
-        if (!result.success) {
-          reqLogger.warn({ errorType: result.error?.type }, "Execution failed");
-          return result as any;
+      for (const f of files) {
+        const fileSize = getBase64ByteSize(f.b64_data);
+        if (fileSize > config.maxFileSizeBytes) {
+          reqLogger.warn(
+            { filename: f.filename, fileSize, maxAllowed: config.maxFileSizeBytes },
+            "Resource limit hit: file too large",
+          );
+          throw new AppError(
+            "resource_limit",
+            `File "${f.filename}" exceeds maximum size of ${config.maxFileSizeBytes} bytes`,
+          );
         }
-
-        return { success: true, result };
-      } catch (error: any) {
-        reqLogger.error({ err: error }, "Unhandled error during execution");
-        return {
-          success: false,
-          error: {
-            type: "system",
-            message: error.message || "Unknown error occurred",
-          },
-        };
       }
+
+      const session = await sessionManager.getOrCreateSession(sessionId);
+      reqLogger.info(
+        { sessionAgeMs: Date.now() - session.createdAt },
+        "Session acquired",
+      );
+
+      const result = await session.environment.runCode(code, files);
+      reqLogger.info(
+        { success: result.success, runtimeMs: result.code_runtime },
+        "Execution finished",
+      );
+
+      if (!result.success) {
+        reqLogger.warn({ errorType: result.error?.type }, "Execution failed");
+        return result;
+      }
+
+      return { success: true, result };
     },
     {
       body: t.Object({
@@ -104,6 +215,44 @@ const app = new Elysia()
     status: "healthy",
     activeSessions: sessionManager.getActiveSessionCount(),
   }))
+  .get("/ready", async ({ set }) => {
+    const env = new PyodidePythonEnvironment();
+    try {
+      await Promise.race([
+        env.init({ skipPackages: true }),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Readiness check timed out")),
+            READINESS_TIMEOUT_MS,
+          ),
+        ),
+      ]);
+
+      const result = await Promise.race([
+        env.runCode("1 + 1", []),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Readiness check timed out")),
+            READINESS_TIMEOUT_MS,
+          ),
+        ),
+      ]);
+
+      if (result.success && result.final_expression === 2) {
+        set.status = 200;
+        return { status: "ready" };
+      }
+
+      set.status = 503;
+      return { status: "not_ready" };
+    } catch (error) {
+      logger.warn({ err: error }, "Readiness check failed");
+      set.status = 503;
+      return { status: "not_ready" };
+    } finally {
+      await env.terminate();
+    }
+  })
   .get("/sessions", () => ({
     sessions: sessionManager.getSessionsInfo(),
   }))
@@ -116,6 +265,8 @@ logger.info(
 
 const handleShutdown = async (signal: string) => {
   logger.info({ signal }, "Starting graceful shutdown");
+
+  rateLimiter.stop();
 
   const shutdownTimeout = setTimeout(() => {
     logger.fatal(

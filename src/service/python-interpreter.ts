@@ -1,6 +1,7 @@
 import { CodeExecutionResponse, PythonEnvironment } from "./types";
 import { config } from "../config";
 import { logger } from "../logger";
+import { AppError } from "../errors";
 
 function getBase64ByteSize(base64: string): number {
   let padding = 0;
@@ -54,12 +55,12 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
     });
   }
 
-  async init(): Promise<void> {
+  async init(options?: { skipPackages?: boolean }): Promise<void> {
     this.worker = new Worker(this.workerUrl);
     const response = await this.sendMessage<{
       success: boolean;
       error?: string;
-    }>("init", {});
+    }>("init", { skipPackages: options?.skipPackages });
     if (!response.success) {
       throw new Error(response.error || "Worker initialization failed");
     }
@@ -174,21 +175,14 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
         }
         await this.init();
 
-        const result = {
-          success: false,
-          error: {
-            type: "timeout",
-            message: `Execution timed out after ${config.executionTimeoutMs}ms`,
-          },
-          std_out: "",
-          std_err: "",
-          code_runtime: config.executionTimeoutMs,
-        };
-        reqLogger.info(
-          { success: result.success, runtimeMs: result.code_runtime },
-          "Code execution response ready"
+        reqLogger.error(
+          { durationMs: config.executionTimeoutMs },
+          "Execution timed out"
         );
-        return result;
+        throw new AppError(
+          "timeout",
+          `Execution timed out after ${config.executionTimeoutMs}ms`,
+        );
       }
 
       reqLogger.error({ err: error }, "Worker error, respawning");
@@ -199,21 +193,11 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
       }
       await this.init();
 
-      const result = {
-        success: false,
-        error: {
-          type: "system",
-          message: error.message || "Unknown worker error",
-        },
-        std_out: "",
-        std_err: "",
-        code_runtime: Date.now() - startCode,
-      };
-      reqLogger.info(
-        { success: result.success, runtimeMs: result.code_runtime },
-        "Code execution response ready"
+      reqLogger.error({ err: error }, "Worker error");
+      throw new AppError(
+        "system",
+        error.message || "Unknown worker error",
       );
-      return result;
     }
   }
 }

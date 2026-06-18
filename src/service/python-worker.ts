@@ -43,7 +43,7 @@ async function prepareEnvironment() {
   default_file_names.add("default.profraw");
 }
 
-async function loadEnvironment(): Promise<void> {
+async function loadEnvironment(skipPackages = false): Promise<void> {
   out_string = "";
   err_string = "";
   pyodide = await loadPyodide({
@@ -104,11 +104,13 @@ async function loadEnvironment(): Promise<void> {
     );
   }
 
-  await pyodide.loadPackage(["numpy", "matplotlib", "pandas"]);
+  if (!skipPackages) {
+    await pyodide.loadPackage(["numpy", "matplotlib", "pandas"]);
 
-  await pyodide.runPythonAsync(
-    "import matplotlib.pyplot as plt\nimport pandas as pd\nimport numpy as np",
-  );
+    await pyodide.runPythonAsync(
+      "import matplotlib.pyplot as plt\nimport pandas as pd\nimport numpy as np",
+    );
+  }
 }
 
 function listFilesRecursive(dir: string): string[] {
@@ -217,7 +219,7 @@ self.onmessage = async (event) => {
   if (type === "init") {
     try {
       await prepareEnvironment();
-      await loadEnvironment();
+      await loadEnvironment(event.data.skipPackages === true);
       self.postMessage({ id, type: "init", success: true });
     } catch (error: any) {
       self.postMessage({

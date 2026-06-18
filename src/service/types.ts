@@ -17,7 +17,7 @@ export interface FileData {
 }
 
 export interface PythonEnvironment {
-  init(): Promise<void>;
+  init(options?: { skipPackages?: boolean }): Promise<void>;
   waitForReady(): Promise<void>;
   runCode(code: string, files: any[]): Promise<CodeExecutionResponse>;
   cleanup(): Promise<void>;

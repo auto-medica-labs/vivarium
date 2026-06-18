@@ -1,9 +1,13 @@
-FROM oven/bun:1.1-slim
+FROM oven/bun:1.2-slim
 
 WORKDIR /app
 
-# Install dependencies (lockfile omitted — bun 1.1 base predates lockfileVersion 1)
-COPY package.json ./
+# Install curl for the HEALTHCHECK
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install dependencies (lockfile restores reproducible installs)
+COPY package.json bun.lock ./
 RUN bun install --production
 
 # Copy application source
@@ -17,5 +21,8 @@ COPY default_python_home/ ./default_python_home/
 COPY pyodide_cache/ ./pyodide_cache/
 
 EXPOSE 3080
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+  CMD curl -f http://localhost:3080/ready || exit 1
 
 CMD ["bun", "run", "src/index.ts"]

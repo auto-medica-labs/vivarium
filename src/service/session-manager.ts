@@ -1,5 +1,6 @@
 import { PyodidePythonEnvironment } from "./python-interpreter";
 import { logger } from "../logger";
+import { AppError } from "../errors";
 
 interface Session {
   id: string;
@@ -11,11 +12,13 @@ interface Session {
 export class SessionManager {
   private sessions: Map<string, Session> = new Map();
   private sessionTimeout: number; // 10 minutes in milliseconds
+  private maxSessions: number;
   private cleanupInterval: NodeJS.Timeout | null = null;
   private readonly cleanupIntervalMs: number = 60 * 1000; // Check every minute
 
-  constructor(sessionTimeoutMinutes: number = 10) {
+  constructor(sessionTimeoutMinutes: number = 10, maxSessions: number = 20) {
     this.sessionTimeout = sessionTimeoutMinutes * 60 * 1000;
+    this.maxSessions = maxSessions;
     this.startCleanupInterval();
   }
 
@@ -47,6 +50,13 @@ export class SessionManager {
     // Check if session already exists
     if (this.sessions.has(sessionId)) {
       throw new Error(`Session with id ${sessionId} already exists`);
+    }
+
+    if (this.sessions.size >= this.maxSessions) {
+      throw new AppError(
+        "resource_limit",
+        "Maximum active sessions reached",
+      );
     }
 
     logger.info({ sessionId }, "Creating new session");

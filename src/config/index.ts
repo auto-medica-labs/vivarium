@@ -27,6 +27,7 @@ export const config = {
   maxFileSizeBytes: getEnvInt("MAX_FILE_SIZE_BYTES", 10 * 1024 * 1024),
   maxFilesPerRequest: getEnvInt("MAX_FILES_PER_REQUEST", 10),
   rateLimitRequestsPerMin: getEnvInt("RATE_LIMIT_REQUESTS_PER_MIN", 10),
+  maxSessions: getEnvInt("MAX_SESSIONS", 20),
   logLevel: getEnvString("LOG_LEVEL", "info"),
   logFilePath: getEnvString("LOG_FILE_PATH", "./logs/app.log"),
   isProduction: getEnvBool("NODE_ENV_PRODUCTION", false),
@@ -41,4 +42,7 @@ if (config.maxFileSizeBytes === 0) {
 }
 if (config.maxFilesPerRequest === 0) {
   throw new Error("MAX_FILES_PER_REQUEST must be greater than 0");
+}
+if (config.maxSessions === 0) {
+  throw new Error("MAX_SESSIONS must be greater than 0");
 }

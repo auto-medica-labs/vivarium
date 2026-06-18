@@ -167,4 +167,49 @@ describe("Vivarium integration", () => {
     expect(body.success).toBe(false);
     expect(body.error.type).toBe("NameError");
   });
+
+  test(
+    "CVE-2026-5752 prototype-chain escape is blocked",
+    async () => {
+      const code = `
+import js
+
+# Object mocks exposed via jsglobals must not inherit from Object.prototype.
+doc = js.document
+assert getattr(doc, "constructor", None) is None, (
+    "CVE-2026-5752 regression: js.document.constructor is reachable"
+)
+try:
+    leak = doc.constructor.constructor("return globalThis")()
+    raise AssertionError(f"escaped: {leak}")
+except (AttributeError, TypeError):
+    pass
+
+# Wrapped host functions must also hide Function.prototype.constructor.
+for name in ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "alert"]:
+    fn = getattr(js, name)
+    assert getattr(fn, "constructor", None) is None, (
+        f"prototype escape route via {name}.constructor"
+    )
+
+print("ok: prototype chain escape blocked")
+`;
+      const { res, body } = await exec("cve-test", code);
+      expect(res.status).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.result.std_out).toContain("ok: prototype chain escape blocked");
+    },
+    30000,
+  );
+
+  test(
+    "matplotlib still initializes after DOM hardening",
+    async () => {
+      const { res, body } = await exec("mpl-test", "import matplotlib.pyplot as plt\nplt.subplots()\nprint('matplotlib ok')");
+      expect(res.status).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.result.std_out).toContain("matplotlib ok");
+    },
+    30000,
+  );
 });

@@ -8,6 +8,37 @@ declare const self: Worker;
 const pythonEnvironmentHomeDir = "/home/earth";
 const defaultDirectoryOuterPath = "default_python_home";
 
+// CVE-2026-5752 hardening: exposed objects must not inherit from
+// Object.prototype, otherwise sandboxed Python can walk the prototype chain
+// (.constructor.constructor) to reach host globalThis and escape.
+function nullProto<T extends object>(props: T): T {
+  return Object.assign(Object.create(null) as T, props);
+}
+function sealed<T extends object>(props: T): Readonly<T> {
+  return Object.freeze(nullProto(props));
+}
+const noop = () => { /* DOM stub no-op */ };
+
+// Functions expose Function.prototype.constructor, which is also a prototype
+// chain escape route. Wrap host functions so the exposed proxy has a null
+// prototype; the wrapped function still delegates to the real host impl.
+function safeFn<T extends (...args: any[]) => any>(fn: T): T {
+  const wrapped = (...args: Parameters<T>): ReturnType<T> => fn(...args);
+  Object.setPrototypeOf(wrapped, null);
+  return wrapped as T;
+}
+
+// Not frozen: matplotlib-pyodide writes to .id, .textContent, .style.display, etc.
+const elementStub = () =>
+  nullProto({
+    addEventListener: noop,
+    style: nullProto({}),
+    classList: sealed({ add: noop, remove: noop }),
+    setAttribute: noop,
+    appendChild: noop,
+    remove: noop,
+  });
+
 let pyodide: PyodideInterface | null = null;
 let out_string = "";
 let err_string = "";
@@ -55,43 +86,23 @@ async function loadEnvironment(skipPackages = false): Promise<void> {
       err_string += msg + "\n";
     },
     jsglobals: {
-      clearInterval,
-      clearTimeout,
-      setInterval,
-      setTimeout,
-      ImageData: {},
-      document: {
+      clearInterval: safeFn(clearInterval),
+      clearTimeout: safeFn(clearTimeout),
+      setInterval: safeFn(setInterval),
+      setTimeout: safeFn(setTimeout),
+      alert: safeFn(noop),
+      // SECURITY (CVE-2026-5752): every value exposed to the sandbox must be
+      // built with a null prototype so .constructor is unreachable.
+      ImageData: sealed({}),
+      document: sealed({
         getElementById: (id: any) => {
           if (id.includes("canvas")) return null;
-          return {
-            addEventListener: () => {},
-            style: {},
-            classList: { add: () => {}, remove: () => {} },
-            setAttribute: () => {},
-            appendChild: () => {},
-            remove: () => {},
-          };
+          return elementStub();
         },
-        createElement: () => ({
-          addEventListener: () => {},
-          style: {},
-          classList: { add: () => {}, remove: () => {} },
-          setAttribute: () => {},
-          appendChild: () => {},
-          remove: () => {},
-        }),
-        createTextNode: () => ({
-          addEventListener: () => {},
-          style: {},
-          classList: { add: () => {}, remove: () => {} },
-          setAttribute: () => {},
-          appendChild: () => {},
-          remove: () => {},
-        }),
-        body: {
-          appendChild: () => {},
-        },
-      },
+        createElement: () => elementStub(),
+        createTextNode: () => elementStub(),
+        body: sealed({ appendChild: noop }),
+      }),
     },
     env: { HOME: pythonEnvironmentHomeDir },
   });

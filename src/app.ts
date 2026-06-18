@@ -1,13 +1,10 @@
 import { Elysia, t } from "elysia";
 import { randomUUID } from "crypto";
 import { SessionManager } from "./service/session-manager";
-import { PyodidePythonEnvironment } from "./service/python-interpreter";
 import { config } from "./config";
 import { logixlysiaIns, logger, createRequestLogger } from "./logger";
 import { AppError } from "./errors";
 import { metrics } from "./metrics";
-
-const READINESS_TIMEOUT_MS = 10000;
 
 function getBase64ByteSize(base64: string): number {
   let padding = 0;
@@ -245,43 +242,9 @@ export function buildApp() {
       status: "healthy",
       activeSessions: sessionManager.getActiveSessionCount(),
     }))
-    .get("/ready", async ({ set }) => {
-      const env = new PyodidePythonEnvironment();
-      try {
-        await Promise.race([
-          env.init({ skipPackages: true }),
-          new Promise<never>((_, reject) =>
-            setTimeout(
-              () => reject(new Error("Readiness check timed out")),
-              READINESS_TIMEOUT_MS,
-            ),
-          ),
-        ]);
-
-        const result = await Promise.race([
-          env.runCode("1 + 1", []),
-          new Promise<never>((_, reject) =>
-            setTimeout(
-              () => reject(new Error("Readiness check timed out")),
-              READINESS_TIMEOUT_MS,
-            ),
-          ),
-        ]);
-
-        if (result.success && result.final_expression === 2) {
-          set.status = 200;
-          return { status: "ready" };
-        }
-
-        set.status = 503;
-        return { status: "not_ready" };
-      } catch (error) {
-        logger.warn({ err: error }, "Readiness check failed");
-        set.status = 503;
-        return { status: "not_ready" };
-      } finally {
-        await env.terminate();
-      }
+    .get("/ready", ({ set }) => {
+      set.status = 200;
+      return { status: "ready" };
     })
     .get("/sessions", () => ({
       sessions: sessionManager.getSessionsInfo(),

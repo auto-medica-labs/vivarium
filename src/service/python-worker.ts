@@ -31,12 +31,12 @@ function safeFn<T extends (...args: any[]) => any>(fn: T): T {
 // Not frozen: matplotlib-pyodide writes to .id, .textContent, .style.display, etc.
 const elementStub = () =>
   nullProto({
-    addEventListener: noop,
+    addEventListener: safeFn(noop),
     style: nullProto({}),
-    classList: sealed({ add: noop, remove: noop }),
-    setAttribute: noop,
-    appendChild: noop,
-    remove: noop,
+    classList: sealed({ add: safeFn(noop), remove: safeFn(noop) }),
+    setAttribute: safeFn(noop),
+    appendChild: safeFn(noop),
+    remove: safeFn(noop),
   });
 
 let pyodide: PyodideInterface | null = null;
@@ -85,7 +85,7 @@ async function loadEnvironment(skipPackages = false): Promise<void> {
     stderr: (msg) => {
       err_string += msg + "\n";
     },
-    jsglobals: {
+    jsglobals: nullProto({
       clearInterval: safeFn(clearInterval),
       clearTimeout: safeFn(clearTimeout),
       setInterval: safeFn(setInterval),
@@ -95,15 +95,15 @@ async function loadEnvironment(skipPackages = false): Promise<void> {
       // built with a null prototype so .constructor is unreachable.
       ImageData: sealed({}),
       document: sealed({
-        getElementById: (id: any) => {
+        getElementById: safeFn((id: any) => {
           if (id.includes("canvas")) return null;
           return elementStub();
-        },
-        createElement: () => elementStub(),
-        createTextNode: () => elementStub(),
-        body: sealed({ appendChild: noop }),
+        }),
+        createElement: safeFn(() => elementStub()),
+        createTextNode: safeFn(() => elementStub()),
+        body: sealed({ appendChild: safeFn(noop) }),
       }),
-    },
+    }),
     env: { HOME: pythonEnvironmentHomeDir },
   });
 
@@ -121,6 +121,31 @@ async function loadEnvironment(skipPackages = false): Promise<void> {
     await pyodide.runPythonAsync(
       "import matplotlib.pyplot as plt\nimport pandas as pd\nimport numpy as np",
     );
+  }
+
+  // SECURITY: disable dangerous filesystem backends; keep only MEMFS.
+  delete (pyodide.FS.filesystems as any).NODEFS;
+  delete (pyodide.FS.filesystems as any).WORKERFS;
+  delete (pyodide.FS.filesystems as any).PROXYFS;
+
+  // SECURITY: lock down package/module registration after initialization.
+  (pyodide as any).loadPackage = async () => {
+    throw new Error("Package installation is disabled");
+  };
+  if ("loadPackagesFromImports" in pyodide) {
+    (pyodide as any).loadPackagesFromImports = async () => {
+      throw new Error("Package installation is disabled");
+    };
+  }
+  if ("registerJsModule" in pyodide) {
+    (pyodide as any).registerJsModule = () => {
+      throw new Error("JS module registration is disabled");
+    };
+  }
+  if ("unregisterJsModule" in pyodide) {
+    (pyodide as any).unregisterJsModule = () => {
+      throw new Error("JS module registration is disabled");
+    };
   }
 }
 
@@ -170,8 +195,6 @@ async function runCode(
   const result: CodeExecutionResponse = { success: true };
 
   try {
-    await pyodide!.loadPackagesFromImports(code);
-
     for (const f of files) {
       const fileBytes = base64ToBytes(f.b64_data);
       pyodide!.FS.writeFile(

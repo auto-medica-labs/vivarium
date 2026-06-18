@@ -203,6 +203,82 @@ print("ok: prototype chain escape blocked")
   );
 
   test(
+    "js proxy root and nested functions hide constructor",
+    async () => {
+      const code = `
+import js
+
+# Root jsglobals object must not inherit Object.prototype.
+assert getattr(js, "constructor", None) is None, "js.constructor is reachable"
+assert getattr(js, "__proto__", None) is None, "js.__proto__ is reachable"
+
+# Nested DOM functions must also hide Function.prototype.constructor.
+doc = js.document
+for name in ["getElementById", "createElement", "createTextNode"]:
+    fn = getattr(doc, name)
+    assert getattr(fn, "constructor", None) is None, (
+        f"nested function {name}.constructor is reachable"
+    )
+
+# Element stub methods must hide constructor as well.
+el = doc.createElement("div")
+assert getattr(el.addEventListener, "constructor", None) is None
+assert getattr(el.setAttribute, "constructor", None) is None
+
+print("ok: js root and nested functions locked")
+`;
+      const { res, body } = await exec("js-root-test", code);
+      expect(res.status).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.result.std_out).toContain(
+        "ok: js root and nested functions locked",
+      );
+    },
+    30000,
+  );
+
+  test(
+    "package installation is disabled",
+    async () => {
+      const code = `
+import pyodide
+try:
+    await pyodide.loadPackage("six")
+    print("LOAD_ALLOWED")
+except Exception as e:
+    print("LOAD_BLOCKED:", "disabled" in str(e).lower() or "package" in str(e).lower())
+`;
+      const { res, body } = await exec("package-blocked-test", code);
+      expect(res.status).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.result.std_out).toContain("LOAD_BLOCKED: True");
+    },
+    30000,
+  );
+
+  test(
+    "dangerous filesystem backends are disabled",
+    async () => {
+      const code = `
+from pyodide_js import FS
+keys = list(FS.filesystems.object_keys())
+print("NODEFS:", "NODEFS" in keys)
+print("WORKERFS:", "WORKERFS" in keys)
+print("PROXYFS:", "PROXYFS" in keys)
+print("MEMFS:", "MEMFS" in keys)
+`;
+      const { res, body } = await exec("fs-backend-test", code);
+      expect(res.status).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.result.std_out).toContain("NODEFS: False");
+      expect(body.result.std_out).toContain("WORKERFS: False");
+      expect(body.result.std_out).toContain("PROXYFS: False");
+      expect(body.result.std_out).toContain("MEMFS: True");
+    },
+    30000,
+  );
+
+  test(
     "matplotlib still initializes after DOM hardening",
     async () => {
       const { res, body } = await exec("mpl-test", "import matplotlib.pyplot as plt\nplt.subplots()\nprint('matplotlib ok')");

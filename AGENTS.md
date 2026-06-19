@@ -96,7 +96,7 @@ Failure:
 ### Other endpoints
 
 - `GET /health` — basic health + active session count
-- `GET /ready` — readiness probe; boots a throwaway Pyodide env and runs `1 + 1`
+- `GET /ready` — lightweight readiness probe; returns 200 when the HTTP server is responsive (does not spawn Pyodide)
 - `GET /sessions` — list active sessions with age/idle metadata
 - `GET /metrics` — Prometheus text metrics
 

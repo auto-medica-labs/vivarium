@@ -141,7 +141,8 @@ Check server health and get active session count.
 
 #### GET `/ready` - Readiness Probe
 
-Verify that the Python environment can initialize and execute code.
+Quick server check. Returns 200 when the HTTP server is up and able to respond.
+This endpoint intentionally does **not** spawn Pyodide; use `/health` or an actual `/exec` call to verify Python execution capability.
 
 **Response:**
 

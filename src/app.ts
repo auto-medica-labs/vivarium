@@ -1,63 +1,14 @@
 import { Elysia, t } from "elysia";
 import { randomUUID } from "crypto";
+import { access } from "fs/promises";
+import { constants } from "fs";
 import { SessionManager } from "./service/session-manager";
 import { config } from "./config";
 import { logixlysiaIns, logger, createRequestLogger } from "./logger";
 import { AppError } from "./errors";
 import { metrics } from "./metrics";
-
-function getBase64ByteSize(base64: string): number {
-  let padding = 0;
-  if (base64.endsWith("==")) padding = 2;
-  else if (base64.endsWith("=")) padding = 1;
-  return (base64.length * 3) / 4 - padding;
-}
-
-export class RateLimiter {
-  private readonly windowMs = 60 * 1000;
-  private readonly entries = new Map<string, { count: number; resetAt: number }>();
-  private readonly cleanupInterval: NodeJS.Timeout;
-
-  constructor(private readonly limit: number) {
-    this.cleanupInterval = setInterval(() => this.cleanup(), this.windowMs);
-  }
-
-  isAllowed(ip: string): { allowed: boolean; retryAfter?: number } {
-    const now = Date.now();
-    let entry = this.entries.get(ip);
-    if (!entry || now > entry.resetAt) {
-      entry = { count: 0, resetAt: now + this.windowMs };
-      this.entries.set(ip, entry);
-    }
-
-    entry.count++;
-
-    if (entry.count > this.limit) {
-      return {
-        allowed: false,
-        retryAfter: Math.max(0, Math.ceil((entry.resetAt - now) / 1000)),
-      };
-    }
-    return { allowed: true };
-  }
-
-  reset(): void {
-    this.entries.clear();
-  }
-
-  stop(): void {
-    clearInterval(this.cleanupInterval);
-  }
-
-  private cleanup(): void {
-    const now = Date.now();
-    for (const [ip, entry] of this.entries) {
-      if (now > entry.resetAt) {
-        this.entries.delete(ip);
-      }
-    }
-  }
-}
+import { getBase64ByteSize } from "./utils";
+import { RateLimiter } from "./rate-limiter";
 
 export function buildApp() {
   const rateLimiter = new RateLimiter(config.rateLimitRequestsPerMin);
@@ -76,29 +27,40 @@ export function buildApp() {
         return;
       }
 
-      const ip =
-        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-        server?.requestIP?.(request)?.address ||
-        "unknown";
+      // Determine client IP, respecting trusted proxy count.
+      // When trustedProxyCount === 0 (default), X-Forwarded-For is ignored
+      // entirely to prevent spoofing. When N > 0, the Nth-from-right IP in
+      // the chain is trusted as the client.
+      let ip: string;
+      if (config.trustedProxyCount > 0) {
+        const forwardedFor = request.headers.get("x-forwarded-for");
+        if (forwardedFor) {
+          const ips = forwardedFor.split(",").map((s) => s.trim()).filter(Boolean);
+          const clientIndex = ips.length - config.trustedProxyCount - 1;
+          if (clientIndex >= 0 && clientIndex < ips.length) {
+            ip = ips[clientIndex];
+          } else {
+            ip = server?.requestIP?.(request)?.address || "unknown";
+          }
+        } else {
+          ip = server?.requestIP?.(request)?.address || "unknown";
+        }
+      } else {
+        // No trusted proxy — use direct connection only
+        ip = server?.requestIP?.(request)?.address || "unknown";
+      }
 
       const { allowed, retryAfter } = rateLimiter.isAllowed(ip);
       if (!allowed) {
         logger.warn({ ip, path, retryAfter }, "Rate limit exceeded");
-        if (path === "/exec") {
-          metrics.incRequests("rate_limited");
-          metrics.incExecutions();
-        }
         set.status = 429;
         if (retryAfter !== undefined) {
           set.headers["Retry-After"] = String(retryAfter);
         }
-        return {
-          success: false,
-          error: {
-            type: "rate_limit",
-            message: "Rate limit exceeded. Try again later.",
-          },
-        };
+        throw new AppError(
+          "rate_limit",
+          "Rate limit exceeded. Try again later.",
+        );
       }
 
       if (path === "/exec") {
@@ -126,8 +88,14 @@ export function buildApp() {
           "Application error",
         );
         if (path === "/exec") {
-          const status = error.type === "timeout" ? "timeout" : "error";
-          metrics.incRequests(status);
+          if (error.type === "timeout") {
+            metrics.incRequests("timeout");
+          } else if (error.type === "rate_limit") {
+            metrics.incRequests("rate_limited");
+            metrics.incExecutions();
+          } else {
+            metrics.incRequests("error");
+          }
         }
         return {
           success: false,
@@ -153,6 +121,7 @@ export function buildApp() {
     .post(
       "/exec",
       async ({ body, query, store, request }) => {
+        const requestStart = Date.now();
         const { code, files = [] } = body;
         const { sessionId } = query;
         const requestId = request.headers.get("x-request-id") || undefined;
@@ -185,6 +154,22 @@ export function buildApp() {
         }
 
         for (const f of files) {
+          if (
+            f.filename.includes("..") ||
+            f.filename.startsWith("/") ||
+            f.filename.includes("\0") ||
+            /[\x00-\x1f]/.test(f.filename)
+          ) {
+            reqLogger.warn(
+              { filename: f.filename },
+              "Invalid filename rejected",
+            );
+            throw new AppError(
+              "validation",
+              `Invalid filename: ${f.filename}`,
+            );
+          }
+
           const fileSize = getBase64ByteSize(f.b64_data);
           if (fileSize > config.maxFileSizeBytes) {
             reqLogger.warn(
@@ -209,6 +194,7 @@ export function buildApp() {
         if (result.code_runtime !== undefined) {
           metrics.observeDuration(result.code_runtime);
         }
+        metrics.observeRequestDuration(Date.now() - requestStart);
         reqLogger.info(
           { success: result.success, runtimeMs: result.code_runtime },
           "Execution finished",
@@ -238,10 +224,26 @@ export function buildApp() {
         }),
       },
     )
-    .get("/health", () => ({
-      status: "healthy",
-      activeSessions: sessionManager.getActiveSessionCount(),
-    }))
+    .get("/health", async () => {
+      const sessionManagerActive = sessionManager.isActive();
+
+      // Check pyodide cache is accessible (quick file-system check,
+      // doesn't boot a worker).
+      let cacheAvailable = false;
+      try {
+        await access("pyodide_cache", constants.R_OK);
+        cacheAvailable = true;
+      } catch {
+        // cache not found or not readable
+      }
+
+      return {
+        status: "healthy",
+        activeSessions: sessionManager.getActiveSessionCount(),
+        sessionManagerRunning: sessionManagerActive,
+        pyodideCacheAvailable: cacheAvailable,
+      };
+    })
     .get("/ready", ({ set }) => {
       set.status = 200;
       return { status: "ready" };

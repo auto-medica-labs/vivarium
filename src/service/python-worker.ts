@@ -185,9 +185,27 @@ function base64ToBytes(base64: string): Uint8Array {
   return Uint8Array.from(binString, (m) => m.codePointAt(0)!);
 }
 
+function isValidFilename(name: string): boolean {
+  return (
+    !name.includes("..") &&
+    !name.startsWith("/") &&
+    !name.includes("\0") &&
+    !/[\x00-\x1f]/.test(name)
+  );
+}
+
+function getBase64ByteSize(b64: string): number {
+  let padding = 0;
+  if (b64.endsWith("==")) padding = 2;
+  else if (b64.endsWith("=")) padding = 1;
+  return (b64.length * 3) / 4 - padding;
+}
+
 async function runCode(
   code: string,
   files: { filename: string; b64_data: string }[],
+  maxOutputFiles: number,
+  maxOutputByteSize: number,
 ): Promise<CodeExecutionResponse> {
   out_string = "";
   err_string = "";
@@ -196,6 +214,9 @@ async function runCode(
 
   try {
     for (const f of files) {
+      if (!isValidFilename(f.filename)) {
+        throw new Error(`Invalid filename: ${f.filename}`);
+      }
       const fileBytes = base64ToBytes(f.b64_data);
       pyodide!.FS.writeFile(
         pyodide!.PATH.join2(pythonEnvironmentHomeDir, f.filename),
@@ -208,15 +229,21 @@ async function runCode(
     const allFiles = listFilesRecursive(pythonEnvironmentHomeDir);
     const inputFileNames = new Set(files.map((f) => f.filename));
 
-    const newFiles = allFiles
-      .filter(
-        (f) =>
-          !inputFileNames.has(f.slice(pythonEnvironmentHomeDir.length + 1)),
-      )
-      .map((f) => ({
-        filename: f.slice(pythonEnvironmentHomeDir.length + 1),
-        b64_data: readFileAsBase64(f),
-      }));
+    const newFiles: { filename: string; b64_data: string }[] = [];
+    let totalBytes = 0;
+
+    for (const f of allFiles) {
+      const relPath = f.slice(pythonEnvironmentHomeDir.length + 1);
+      if (inputFileNames.has(relPath)) continue;
+      if (newFiles.length >= maxOutputFiles) break;
+
+      const b64 = readFileAsBase64(f);
+      const byteSize = getBase64ByteSize(b64);
+      if (totalBytes + byteSize > maxOutputByteSize) break;
+
+      newFiles.push({ filename: relPath, b64_data: b64 });
+      totalBytes += byteSize;
+    }
 
     result.output_files = newFiles;
     result.final_expression = interpreterResult;
@@ -248,7 +275,7 @@ async function runCode(
 }
 
 self.onmessage = async (event) => {
-  const { id, type, code, files } = event.data;
+  const { id, type, code, files, maxOutputFiles, maxOutputByteSize } = event.data;
 
   if (type === "init") {
     try {
@@ -266,7 +293,12 @@ self.onmessage = async (event) => {
   } else if (type === "runCode") {
     const start = Date.now();
     try {
-      const result = await runCode(code, files || []);
+      const result = await runCode(
+        code,
+        files || [],
+        maxOutputFiles ?? 100,
+        maxOutputByteSize ?? 10 * 1024 * 1024,
+      );
       self.postMessage({ id, type: "runCode", result });
     } catch (error: any) {
       self.postMessage({

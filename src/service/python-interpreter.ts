@@ -1,14 +1,9 @@
 import { CodeExecutionResponse, PythonEnvironment } from "./types";
 import { config } from "../config";
 import { logger } from "../logger";
+import { metrics } from "../metrics";
 import { AppError } from "../errors";
-
-function getBase64ByteSize(base64: string): number {
-  let padding = 0;
-  if (base64.endsWith("==")) padding = 2;
-  else if (base64.endsWith("=")) padding = 1;
-  return (base64.length * 3) / 4 - padding;
-}
+import { getBase64ByteSize } from "../utils";
 
 export class PyodidePythonEnvironment implements PythonEnvironment {
   private worker: Worker | null = null;
@@ -125,6 +120,24 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
         };
       }
 
+      if (
+        f.filename.includes("..") ||
+        f.filename.startsWith("/") ||
+        f.filename.includes("\0") ||
+        /[\x00-\x1f]/.test(f.filename)
+      ) {
+        return {
+          success: false,
+          error: {
+            type: "validation",
+            message: `Invalid filename: ${f.filename}`,
+          },
+          std_out: "",
+          std_err: "",
+          code_runtime: Date.now() - startCode,
+        };
+      }
+
       const fileSize = getBase64ByteSize(f.b64_data);
       if (fileSize > config.maxFileSizeBytes) {
         return {
@@ -147,7 +160,7 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
 
       const runPromise = this.sendMessage<{ result: CodeExecutionResponse }>(
         "runCode",
-        { code, files },
+        { code, files, maxOutputFiles: config.maxOutputFiles, maxOutputByteSize: config.maxOutputByteSize },
       );
 
       const timeoutPromise = new Promise<never>((_, reject) =>
@@ -175,6 +188,7 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
             this.worker.terminate();
             this.worker = null;
           }
+          metrics.incWorkerRespawns();
           await this.init();
 
           reqLogger.error(
@@ -193,6 +207,7 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
           this.worker.terminate();
           this.worker = null;
         }
+        metrics.incWorkerRespawns();
         await this.init();
 
         reqLogger.error({ err: error }, "Worker error");

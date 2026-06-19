@@ -1,10 +1,17 @@
 import { PyodidePythonEnvironment } from "./python-interpreter";
 import { logger } from "../logger";
 import { AppError } from "../errors";
+import { config } from "../config";
+import { metrics } from "../metrics";
+import { Semaphore } from "../utils";
+import type { PythonEnvironment } from "./types";
+
+/** Factory signature for creating environments (injectable for tests). */
+export type EnvironmentFactory = () => PythonEnvironment;
 
 interface Session {
   id: string;
-  environment: PyodidePythonEnvironment;
+  environment: PythonEnvironment;
   createdAt: number;
   lastAccessedAt: number;
 }
@@ -15,10 +22,16 @@ export class SessionManager {
   private maxSessions: number;
   private cleanupInterval: NodeJS.Timeout | null = null;
   private readonly cleanupIntervalMs: number = 60 * 1000; // Check every minute
+  private readonly initSemaphore: Semaphore;
 
-  constructor(sessionTimeoutMinutes: number = 10, maxSessions: number = 20) {
+  constructor(
+    sessionTimeoutMinutes: number = 10,
+    maxSessions: number = 20,
+    private readonly environmentFactory?: EnvironmentFactory,
+  ) {
     this.sessionTimeout = sessionTimeoutMinutes * 60 * 1000;
     this.maxSessions = maxSessions;
+    this.initSemaphore = new Semaphore(config.maxConcurrentInits);
     this.startCleanupInterval();
   }
 
@@ -60,8 +73,18 @@ export class SessionManager {
     }
 
     logger.info({ sessionId }, "Creating new session");
-    const environment = new PyodidePythonEnvironment();
-    await environment.init();
+
+    // Limit concurrent Pyodide inits (each is ~100 MB + ~10 s)
+    await this.initSemaphore.acquire();
+    let environment: PythonEnvironment;
+    try {
+      environment = this.environmentFactory ? this.environmentFactory() : new PyodidePythonEnvironment();
+      const initStart = Date.now();
+      await environment.init();
+      metrics.observeInitDuration(Date.now() - initStart);
+    } finally {
+      this.initSemaphore.release();
+    }
 
     const session: Session = {
       id: sessionId,
@@ -171,6 +194,11 @@ export class SessionManager {
    */
   getActiveSessionCount(): number {
     return this.sessions.size;
+  }
+
+  /** Whether the cleanup interval is currently active. */
+  isActive(): boolean {
+    return this.cleanupInterval !== null;
   }
 
   /**

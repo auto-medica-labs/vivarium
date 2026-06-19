@@ -1,24 +1,4 @@
-function getEnvInt(name: string, defaultValue: number): number {
-  const val = process.env[name];
-  if (val === undefined || val === "") return defaultValue;
-  const parsed = parseInt(val, 10);
-  if (isNaN(parsed) || parsed < 0) {
-    throw new Error(
-      `Environment variable ${name} must be a non-negative integer, got: ${val}`,
-    );
-  }
-  return parsed;
-}
-
-function getEnvString(name: string, defaultValue: string): string {
-  return process.env[name] || defaultValue;
-}
-
-function getEnvBool(name: string, defaultValue: boolean): boolean {
-  const val = process.env[name];
-  if (val === undefined || val === "") return defaultValue;
-  return val === "1" || val === "true";
-}
+import { getEnvInt, getEnvString, getEnvBool } from "../utils";
 
 export const config = {
   port: getEnvInt("PORT", 3080),
@@ -28,6 +8,10 @@ export const config = {
   maxFilesPerRequest: getEnvInt("MAX_FILES_PER_REQUEST", 10),
   rateLimitRequestsPerMin: getEnvInt("RATE_LIMIT_REQUESTS_PER_MIN", 10),
   maxSessions: getEnvInt("MAX_SESSIONS", 20),
+  maxConcurrentInits: getEnvInt("MAX_CONCURRENT_INITS", 2),
+  trustedProxyCount: getEnvInt("TRUSTED_PROXY_COUNT", 0),
+  maxOutputFiles: getEnvInt("MAX_OUTPUT_FILES", 100),
+  maxOutputByteSize: getEnvInt("MAX_OUTPUT_BYTE_SIZE", 10 * 1024 * 1024),
   logLevel: getEnvString("LOG_LEVEL", "info"),
   logFilePath: getEnvString("LOG_FILE_PATH", "./logs/app.log"),
   isProduction: getEnvBool("NODE_ENV_PRODUCTION", false),
@@ -45,4 +29,13 @@ if (config.maxFilesPerRequest === 0) {
 }
 if (config.maxSessions === 0) {
   throw new Error("MAX_SESSIONS must be greater than 0");
+}
+if (config.maxOutputFiles === 0) {
+  throw new Error("MAX_OUTPUT_FILES must be greater than 0");
+}
+if (config.maxOutputByteSize === 0) {
+  throw new Error("MAX_OUTPUT_BYTE_SIZE must be greater than 0");
+}
+if (config.maxConcurrentInits === 0) {
+  throw new Error("MAX_CONCURRENT_INITS must be greater than 0");
 }

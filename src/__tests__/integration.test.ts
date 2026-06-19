@@ -50,6 +50,13 @@ describe("Vivarium integration", () => {
     expect(body.result.std_out).toContain("hello");
   });
 
+  test("/ready returns 200 quickly without booting Pyodide", async () => {
+    const res = await app.handle(new Request("http://localhost/ready"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe("ready");
+  });
+
   test("expression result is returned", async () => {
     const { res, body } = await exec("expr-test", "2 + 2");
     expect(res.status).toBe(200);

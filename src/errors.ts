@@ -3,6 +3,8 @@ const STATUS_BY_TYPE = {
   resource_limit: 413,
   timeout: 504,
   system: 500,
+  rate_limit: 429,
+  parsing: 400,
 } as const;
 
 export type AppErrorType = keyof typeof STATUS_BY_TYPE;

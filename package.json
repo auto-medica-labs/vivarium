@@ -3,7 +3,9 @@
   "version": "0.0.1",
   "scripts": {
     "dev": "bun run --watch src/index.ts",
-    "test": "bun test --timeout 30000"
+    "start": "bun run src/index.ts",
+    "test": "bun test --timeout 30000",
+    "typecheck": "bun tsc --noEmit"
   },
   "dependencies": {
     "elysia": "^1.4.29",

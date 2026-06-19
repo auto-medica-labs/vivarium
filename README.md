@@ -33,6 +33,8 @@ resource management.
   sessions, and request rate
 - ✅ **Structured Logging**: JSON logs via `pino` with request context and
   sensitive-field redaction
+- ✅ **Sandbox Hardening**: Null-prototype sandbox prevents prototype-chain
+  escapes (CVE-2026-5752); package installation disabled after init
 - ✅ **Integration Tests**: Full API coverage using Bun's built-in test runner
 
 ## Technology Stack
@@ -340,6 +342,12 @@ test runner and require no additional dependencies.
 
 ## Deployment
 
+> **⚠️ Network-level access control required.** Vivarium has no built-in
+> authentication or authorization. Anyone who can reach the port can execute
+> arbitrary Python code. In production, it MUST be deployed behind a corporate
+> VPN, firewall, or a reverse proxy that handles auth (e.g. HTTP basic auth,
+> OAuth2-proxy, mTLS).
+
 ### Docker
 
 ```dockerfile
@@ -350,25 +358,84 @@ RUN bun install
 CMD ["bun", "run", "src/index.ts"]
 ```
 
+### Docker Compose (with TLS + basic auth via Caddy)
+
+```yaml
+services:
+  vivarium:
+    build: .
+    restart: unless-stopped
+    expose:
+      - 3080
+    environment:
+      - SESSION_TIMEOUT_MINUTES=10
+      - EXECUTION_TIMEOUT_MS=30000
+      - RATE_LIMIT_REQUESTS_PER_MIN=30
+      - NODE_ENV_PRODUCTION=true
+      - TRUSTED_PROXY_COUNT=1
+
+  caddy:
+    image: caddy:alpine
+    restart: unless-stopped
+    ports:
+      - 443:443
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - vivarium
+```
+
+With a `Caddyfile` like:
+
+```
+example.internal.org {
+  reverse_proxy vivarium:3080
+  basicauth {
+    user $HASHED_PASSWORD
+  }
+}
+```
+
 ## Security Considerations
+
+### ⚠️ No Authentication
+
+Vivarium has **no built-in authentication**. Any client that can reach the
+HTTP port can execute arbitrary Python code, list sessions, and read metrics.
+**Do not expose this service to the public internet.**
+
+For internal deployment:
+- Run behind a corporate VPN or private network
+- Use a reverse proxy (nginx, Caddy) for TLS termination and optional auth
+- Set `TRUSTED_PROXY_COUNT=1` if behind a reverse proxy to get real client IPs
+  for rate limiting
+- Consider adding an `API_KEY` env var and a simple bearer-token check on `/exec`
+  if your network controls aren't sufficient
 
 ### Sandboxing
 
 - Pyodide runs in WebAssembly, providing isolation from the host system
 - No direct access to host filesystem or network
-- Limited JavaScript globals exposed to Python
+- All JS globals exposed to Python use **null prototypes** to prevent
+  prototype-chain escapes (`constructor.constructor` → `globalThis`)
+  (mitigates CVE-2026-5752)
+- Dangerous filesystem backends (`NODEFS`, `WORKERFS`, `PROXYFS`) removed
+  after initialization
+- Package installation (`pyodide.loadPackage`) disabled after bootstrap
 
 ### Session Management
 
 - Automatic session expiration (configurable timeout)
 - Regular cleanup of inactive sessions
 - Session isolation (no shared state between sessions)
+- Hard resource cap: `MAX_SESSIONS` (default 20)
 
 ### Best Practices
 
 - Use unique session IDs for each user/request
 - Monitor active sessions via `/sessions` and `/metrics`
-- Set appropriate timeouts and resource limits based on your use case
+- Set `EXECUTION_TIMEOUT_MS` to match your workload (default 60 s)
+- Adjust `RATE_LIMIT_REQUESTS_PER_MIN` for internal batch usage (default 10)
 - Keep `NODE_ENV_PRODUCTION=true` in production for NDJSON log output
 
 ## Contributing

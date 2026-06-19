@@ -40,11 +40,15 @@ See `.env.example`. Loaded/validated in `src/config/index.ts`:
 |---|---|---|
 | `PORT` | 3080 | HTTP port |
 | `SESSION_TIMEOUT_MINUTES` | 10 | Inactivity before a session is cleaned up |
-| `EXECUTION_TIMEOUT_MS` | 30000 | Hard kill limit for a single `runCode` |
+| `EXECUTION_TIMEOUT_MS` | 60000 | Hard kill limit for a single `runCode` |
 | `MAX_FILE_SIZE_BYTES` | 10485760 | Per-upload file size limit |
 | `MAX_FILES_PER_REQUEST` | 10 | Max files per `/exec` request |
 | `RATE_LIMIT_REQUESTS_PER_MIN` | 10 | Per-IP request rate limit |
 | `MAX_SESSIONS` | 20 | Active session cap |
+| `MAX_CONCURRENT_INITS` | 2 | Concurrent Pyodide worker starts (prevents OOM) |
+| `MAX_OUTPUT_FILES` | 100 | Max output files returned per execution |
+| `MAX_OUTPUT_BYTE_SIZE` | 10485760 | Max total output bytes returned |
+| `TRUSTED_PROXY_COUNT` | 0 | Trusted reverse proxies; 0 = ignore X-Forwarded-For |
 | `LOG_LEVEL` | info | pino log level |
 | `LOG_FILE_PATH` | ./logs/app.log | Production log destination |
 | `NODE_ENV_PRODUCTION` | false | Enables NDJSON file logging |
@@ -117,6 +121,10 @@ successfully; the `success` flag is false.
 
 ## Architecture notes
 
+> **⚠️ No authentication.** This service has no built-in auth. Anyone who can
+> reach the port can execute arbitrary Python code. Deploy behind a VPN,
+> firewall, or a reverse proxy with auth. See README for deployment guidance.
+
 ### One Worker per session
 
 `PyodidePythonEnvironment` spawns a Bun `Worker` (`src/service/python-worker.ts`)
@@ -150,6 +158,16 @@ workers and stops the cleanup interval.
 - Every `/exec` request gets a child logger with `sessionId` and `requestId`.
 - `x-request-id` header is honored and returned.
 
+### Security hardening (CVE-2026-5752)
+
+`python-worker.ts` hardens the sandbox against prototype-chain escapes:
+- All `jsglobals` objects are created with `Object.create(null)` (null prototype)
+- Host functions are wrapped via `safeFn()` with `Object.setPrototypeOf(wrapped, null)`
+- Dangerous filesystem backends (`NODEFS`, `WORKERFS`, `PROXYFS`) are deleted after init
+- `pyodide.loadPackage` and `registerJsModule` are stubbed to throw
+
+This prevents Python from walking `.constructor.constructor` → `globalThis`.
+
 ### Metrics
 
 `src/metrics.ts` is a singleton. `/metrics` renders:
@@ -157,8 +175,11 @@ workers and stops the cleanup interval.
 - `vivarium_requests_total{status}`
 - `vivarium_executions_total`
 - `vivarium_active_sessions`
+- `vivarium_worker_respawns_total`
 - `vivarium_memory_usage_bytes`
 - `vivarium_execution_duration_ms` histogram
+- `vivarium_worker_init_duration_ms` histogram
+- `vivarium_request_duration_ms` histogram
 
 ## Testing
 

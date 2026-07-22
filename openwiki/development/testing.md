@@ -19,7 +19,7 @@ The GitHub Actions workflow at `.github/workflows/test.yml` runs on every push u
 - `src/__tests__/session-manager.test.ts` injects mock environments to test creation, reuse, cap enforcement, expiration, metadata, termination, and shutdown without Pyodide startup.
 - `src/__tests__/integration.test.ts` drives `buildApp().app.handle()` in-process against real workers. It covers execution, expressions, session expiry, files, limits, timeout recovery, rate limiting, validation, Python errors, sandbox hardening, disabled package installation, filesystem backends, and matplotlib.
 
-Integration tests set environment variables before dynamically importing `src/app.ts`, because configuration is evaluated at module import time. Each test builds a fresh app and must shut down both the returned `sessionManager` and `rateLimiter`; real Pyodide initialization makes the suite substantially slower than unit tests.
+The test preload sets integration environment variables before any test module imports `src/config`, because configuration is evaluated at module import time. Each test builds a fresh app and must shut down both the returned `sessionManager` and `rateLimiter`; real Pyodide initialization makes the suite substantially slower than unit tests.
 
 ## Change guide
 

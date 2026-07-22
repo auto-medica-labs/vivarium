@@ -1,12 +1,6 @@
 import { beforeEach, afterEach, describe, expect, test } from "bun:test";
 
-// Set environment before the app/config modules are evaluated.
-process.env.MAX_SESSIONS = "3";
-process.env.SESSION_TIMEOUT_MINUTES = "0.01";
-process.env.EXECUTION_TIMEOUT_MS = "3000";
-process.env.MAX_FILE_SIZE_BYTES = "50";
-process.env.LOG_LEVEL = "fatal";
-
+// The shared test preload sets integration limits before any test module imports config.
 const { buildApp } = await import("../app");
 
 describe("Vivarium integration", () => {

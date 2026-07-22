@@ -79,10 +79,10 @@ Sessions timeout after **10 minutes of idle time** and are automatically cleaned
 }
 ```
 
-| Field    | Type     | Required | Description                          |
-| -------- | -------- | -------- | ------------------------------------ |
-| `code`   | string   | Yes      | Python code to execute               |
-| `files`  | array    | No       | Array of `{ filename, b64_data }`    |
+| Field   | Type   | Required | Description                       |
+| ------- | ------ | -------- | --------------------------------- |
+| `code`  | string | Yes      | Python code to execute            |
+| `files` | array  | No       | Array of `{ filename, b64_data }` |
 
 **File limits:** Max **10 files** per request, max **10 MB** per file.
 
@@ -127,14 +127,14 @@ The `b64_data` field contains the base64-encoded content of the file. Files are 
 }
 ```
 
-| Field               | Type     | Description                                  |
-| ------------------- | -------- | -------------------------------------------- |
-| `success`           | boolean  | Always `true` for successful execution       |
-| `result`            | object   | Execution result                             |
-| `result.std_out`    | string   | Standard output from the Python code         |
-| `result.std_err`    | string   | Standard error from the Python code          |
-| `result.output_files` | array  | Output files as `{ filename, b64_data }`     |
-| `result.code_runtime` | number | Execution time in milliseconds               |
+| Field                 | Type    | Description                              |
+| --------------------- | ------- | ---------------------------------------- |
+| `success`             | boolean | Always `true` for successful execution   |
+| `result`              | object  | Execution result                         |
+| `result.std_out`      | string  | Standard output from the Python code     |
+| `result.std_err`      | string  | Standard error from the Python code      |
+| `result.output_files` | array   | Output files as `{ filename, b64_data }` |
+| `result.code_runtime` | number  | Execution time in milliseconds           |
 
 **Failed execution (Python error):**
 
@@ -167,14 +167,14 @@ Note: If `sessionId` is omitted from the URL entirely, Elysia's built-in schema 
 
 ### Error Types
 
-| Error Type       | Description                              | Agent Action                                      |
-| ---------------- | ---------------------------------------- | ------------------------------------------------- |
-| `validation`     | Missing or malformed request fields      | Fix the request body or query parameters and retry|
-| `NameError`, `TypeError`, `SyntaxError`, etc. | Python exception raised | Read the error message and code context, fix the code, retry |
-| `parsing`        | File data is missing or malformed        | Ensure each file has both `filename` and `b64_data` fields |
-| `resource_limit` | Too many files or file too large         | Reduce file count to ≤10 or file size to ≤10 MB   |
-| `timeout`        | Code exceeded execution time limit       | Optimize code or break into smaller chunks        |
-| `system`         | Unexpected server-side error             | Retry once; if it persists, restart the container |
+| Error Type                                    | Description                         | Agent Action                                                 |
+| --------------------------------------------- | ----------------------------------- | ------------------------------------------------------------ |
+| `validation`                                  | Missing or malformed request fields | Fix the request body or query parameters and retry           |
+| `NameError`, `TypeError`, `SyntaxError`, etc. | Python exception raised             | Read the error message and code context, fix the code, retry |
+| `parsing`                                     | File data is missing or malformed   | Ensure each file has both `filename` and `b64_data` fields   |
+| `resource_limit`                              | Too many files or file too large    | Reduce file count to ≤10 or file size to ≤10 MB              |
+| `timeout`                                     | Code exceeded execution time limit  | Optimize code or break into smaller chunks                   |
+| `system`                                      | Unexpected server-side error        | Retry once; if it persists, restart the container            |
 
 ### List Active Sessions
 
@@ -219,9 +219,9 @@ Response:
 
 ### File System Layout
 
-| Path            | Description                              |
-| --------------- | ---------------------------------------- |
-| `/home/earth`   | Working directory; files are read from and written here |
+| Path          | Description                                             |
+| ------------- | ------------------------------------------------------- |
+| `/home/earth` | Working directory; files are read from and written here |
 
 Files uploaded via the `files` array are placed in `/home/earth` before code execution. Any files your code writes to `/home/earth` will be returned in the response's `files` array (base64-encoded).
 
@@ -248,15 +248,15 @@ The server enforces a default rate limit of **10 requests per minute** per IP/se
 
 ## Troubleshooting
 
-| Symptom                              | Cause                      | Fix                                              |
-| ------------------------------------ | -------------------------- | ------------------------------------------------ |
-| Health check fails / connection refused | Server not running       | Run `docker run` command to start the container  |
-| `sessionId` validation error         | Missing query parameter    | Add `?sessionId=default` to the request URL      |
-| `resource_limit` error               | Too many or too large files| Reduce to ≤10 files, each ≤10 MB                 |
-| `timeout` error                      | Code ran too long          | Optimize code; avoid infinite loops              |
-| `execution` error (NameError, TypeError, etc.) | Python exception           | Read error message and code context; fix code and retry |
-| Container not responding             | Server crashed             | `docker restart vivarium`                        |
-| Port already in use                  | Port 3080 taken            | Use `-p <other-port>:3080` in the docker run command |
+| Symptom                                        | Cause                       | Fix                                                     |
+| ---------------------------------------------- | --------------------------- | ------------------------------------------------------- |
+| Health check fails / connection refused        | Server not running          | Run `docker run` command to start the container         |
+| `sessionId` validation error                   | Missing query parameter     | Add `?sessionId=default` to the request URL             |
+| `resource_limit` error                         | Too many or too large files | Reduce to ≤10 files, each ≤10 MB                        |
+| `timeout` error                                | Code ran too long           | Optimize code; avoid infinite loops                     |
+| `execution` error (NameError, TypeError, etc.) | Python exception            | Read error message and code context; fix code and retry |
+| Container not responding                       | Server crashed              | `docker restart vivarium`                               |
+| Port already in use                            | Port 3080 taken             | Use `-p <other-port>:3080` in the docker run command    |
 
 ## Cleanup
 

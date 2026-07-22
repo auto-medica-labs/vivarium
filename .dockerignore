@@ -4,3 +4,4 @@ logs
 .env
 PLAN/
 .pi/
+pyodide_cache

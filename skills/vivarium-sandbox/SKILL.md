@@ -1,5 +1,5 @@
 ---
-name: vivarium-python-sandbox
+name: vivarium-sandbox
 description: Activate this skill when you need to run arbitrary Python code or perform data analysis using Python — including numerical computing (numpy), plotting/visualization (matplotlib), or tabular data processing (pandas). Sets up a sandboxed Docker container, verifies health, executes code, manages files and sessions, and tears down cleanly.
 ---
 

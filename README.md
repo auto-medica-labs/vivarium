@@ -22,7 +22,7 @@ curl -X POST 'http://localhost:3080/exec?sessionId=demo' \
   -d '{"code":"print(2 + 2)"}'
 ```
 
-The worker needs `default_python_home/` and `pyodide_cache/`. The Dockerfile packages both; `pyodide_cache/` is ignored by Git for local development.
+The worker needs `default_python_home/` and a writable `pyodide_cache/`. The Dockerfile preloads the NumPy, Matplotlib, and pandas package cache during the image build.
 
 ## API
 
@@ -53,9 +53,19 @@ Start with [OpenWiki quickstart](openwiki/quickstart.md), then see:
 
 ## Deployment
 
+Build locally:
+
 ```bash
 docker build -t vivarium .
 docker run --rm -p 3080:3080 vivarium
+```
+
+Every push to `main` and every `v*.*.*` tag publishes an image to GHCR through
+[`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml):
+
+```bash
+docker pull ghcr.io/auto-medica-labs/vivarium:latest
+docker run --rm -p 3080:3080 ghcr.io/auto-medica-labs/vivarium:latest
 ```
 
 Configure the service with environment variables documented in [`.env.example`](.env.example) and [operations](openwiki/operations.md). Protect the deployment at the network or proxy layer, and configure `TRUSTED_PROXY_COUNT` only for known proxy hops.

@@ -17,7 +17,7 @@ The server listens on `PORT` (default `3080`). Development watch mode is:
 bun run dev
 ```
 
-The worker expects the checked-out `default_python_home/` directory and a readable `pyodide_cache/` directory. The cache is ignored by Git but is included in the provided Docker image; a local setup without it may fail or lose package-cache availability.
+The worker expects the checked-out `default_python_home/` directory and a writable `pyodide_cache/` directory. Docker preloads the NumPy, Matplotlib, and pandas package cache during the image build.
 
 ## Try the API
 

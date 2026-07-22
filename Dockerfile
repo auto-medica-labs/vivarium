@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 
 # Install dependencies (lockfile restores reproducible installs)
 COPY package.json bun.lock ./
-RUN bun install --production
+RUN bun install --frozen-lockfile --production
 
 # Copy application source
 COPY src/ ./src/
@@ -16,9 +16,13 @@ COPY src/ ./src/
 # Copy the default Python home (required by the server at startup)
 COPY default_python_home/ ./default_python_home/
 
-# Pre-warm the Pyodide package cache so numpy, matplotlib, pandas are
-# available on first container start without network downloads.
-COPY pyodide_cache/ ./pyodide_cache/
+# Pre-warm Pyodide packages during the image build so containers do not need
+# CDN access on first start.
+RUN mkdir -p pyodide_cache \
+  && bun -e 'import { loadPyodide } from "pyodide"; const pyodide = await loadPyodide({ packageCacheDir: "pyodide_cache" }); await pyodide.loadPackage(["numpy", "matplotlib", "pandas"]);' \
+  && chown -R bun:bun pyodide_cache
+
+USER bun
 
 EXPOSE 3080
 

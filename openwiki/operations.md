@@ -25,7 +25,9 @@ Configuration is read when `src/config/index.ts` is imported. Integer values mus
 
 ## Docker deployment
 
-`Dockerfile` uses `oven/bun:1.2-slim`, installs only production dependencies from `package.json` and `bun.lock`, copies `src/`, `default_python_home/`, and `pyodide_cache/`, exposes port 3080, and runs `bun run src/index.ts`. Its Docker `HEALTHCHECK` calls `/ready` every 30 seconds with a 10-second timeout.
+`Dockerfile` uses `oven/bun:1.2-slim`, installs only production dependencies from `package.json` and `bun.lock`, copies `src/` and `default_python_home/`, preloads NumPy, Matplotlib, and pandas into a writable `pyodide_cache/`, exposes port 3080, and runs as the non-root `bun` user. Its Docker `HEALTHCHECK` calls `/ready` every 30 seconds with a 10-second timeout.
+
+Pushes to `main` and `v*.*.*` tags publish `ghcr.io/auto-medica-labs/vivarium` via `.github/workflows/docker-publish.yml`. The workflow authenticates with the repository `GITHUB_TOKEN` and needs `packages: write` permission.
 
 The application has no built-in auth. Do not publish the port directly to the internet. Use a private network/VPN or an authenticated reverse proxy with TLS. If a proxy is used, set `TRUSTED_PROXY_COUNT` to the number of trusted hops so rate limiting sees the client IP; leaving it at `0` intentionally ignores spoofable `X-Forwarded-For`.
 

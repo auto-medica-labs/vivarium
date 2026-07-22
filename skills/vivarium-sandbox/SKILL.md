@@ -9,54 +9,73 @@ Self-contained instructions for provisioning and operating a sandboxed Python ru
 
 ## Setup
 
+The public image is published at GHCR. Set these variables once so every command below uses the same image and port:
+
+```bash
+export VIVARIUM_IMAGE="ghcr.io/auto-medica-labs/vivarium:latest"
+export VIVARIUM_PORT="3080"
+```
+
 ### 1. Pull the Docker Image
 
 ```bash
-docker pull {{DOCKER_IMAGE}}
+docker pull "$VIVARIUM_IMAGE"
 ```
-
-Replace `{{DOCKER_IMAGE}}` with your actual registry URL and image name (e.g. `ghcr.io/you/vivarium:latest`).
 
 ### 2. Run the Container
 
 ```bash
-docker run -d --name vivarium -p 3080:3080 {{DOCKER_IMAGE}}
+docker run -d --name vivarium \
+  -p "${VIVARIUM_PORT}:3080" \
+  "$VIVARIUM_IMAGE"
 ```
 
 - `-d` runs in detached (background) mode
 - `--name vivarium` gives the container a predictable name
-- `-p 3080:3080` maps the server port to your host
+- `-p "${VIVARIUM_PORT}:3080"` maps the server port to your host
 
-**Port conflicts:** If port 3080 is already in use, remap it:
+**Port conflicts:** Set a different host port before running the container:
 
 ```bash
-docker run -d --name vivarium -p 8888:3080 {{DOCKER_IMAGE}}
+export VIVARIUM_PORT="8888"
+docker run -d --name vivarium -p "${VIVARIUM_PORT}:3080" "$VIVARIUM_IMAGE"
 ```
 
-Then use `http://localhost:8888` instead of `http://localhost:3080` in all commands.
+Then use `http://localhost:${VIVARIUM_PORT}` in all commands.
 
 ### 3. Verify Server Health
 
+`/ready` verifies that the HTTP server is listening. `/health` also verifies the session manager and package-cache directory, but does not boot Pyodide:
+
 ```bash
-curl -s http://localhost:3080/health
+for i in $(seq 1 30); do
+  if curl -fsS "http://localhost:${VIVARIUM_PORT}/ready"; then
+    break
+  fi
+  [ "$i" -eq 30 ] && exit 1
+  sleep 1
+done
+curl -fsS "http://localhost:${VIVARIUM_PORT}/health"
 ```
 
-Expected response:
+Expected health response:
 
 ```json
 {
   "status": "healthy",
-  "active_sessions": 0
+  "activeSessions": 0,
+  "sessionManagerRunning": true,
+  "pyodideCacheAvailable": true
 }
 ```
 
-Wait and retry if the server is not yet ready. The first start may take a few seconds as Pyodide initializes.
+The first `/exec` request initializes Pyodide and may take several seconds.
 
 ## Usage
 
 ### Base URL
 
-All API calls go to `http://localhost:3080`. If you remapped the port, adjust accordingly.
+All API calls go to `http://localhost:${VIVARIUM_PORT}`. If you did not set `VIVARIUM_PORT`, use `3080`.
 
 ### Session Management
 
@@ -89,7 +108,7 @@ Sessions timeout after **10 minutes of idle time** and are automatically cleaned
 **Example — simple execution:**
 
 ```bash
-curl -s -X POST "http://localhost:3080/exec?sessionId=default" \
+curl -s -X POST "http://localhost:${VIVARIUM_PORT}/exec?sessionId=default" \
   -H "Content-Type: application/json" \
   -d '{"code": "print(2 + 2)"}'
 ```
@@ -97,7 +116,7 @@ curl -s -X POST "http://localhost:3080/exec?sessionId=default" \
 **Example — execute with a file upload:**
 
 ```bash
-curl -s -X POST "http://localhost:3080/exec?sessionId=default" \
+curl -s -X POST "http://localhost:${VIVARIUM_PORT}/exec?sessionId=default" \
   -H "Content-Type: application/json" \
   -d '{
     "code": "import pandas as pd; df = pd.read_csv(\"data.csv\"); print(df.head())",
@@ -181,7 +200,7 @@ Note: If `sessionId` is omitted from the URL entirely, Elysia's built-in schema 
 **Endpoint:** `GET /sessions`
 
 ```bash
-curl -s http://localhost:3080/sessions
+curl -s "http://localhost:${VIVARIUM_PORT}/sessions"
 ```
 
 Response:
@@ -205,7 +224,7 @@ Response:
 **Endpoint:** `GET /health`
 
 ```bash
-curl -s http://localhost:3080/health
+curl -s "http://localhost:${VIVARIUM_PORT}/health"
 ```
 
 Response:
@@ -213,7 +232,9 @@ Response:
 ```json
 {
   "status": "healthy",
-  "active_sessions": 1
+  "activeSessions": 1,
+  "sessionManagerRunning": true,
+  "pyodideCacheAvailable": true
 }
 ```
 
@@ -223,7 +244,7 @@ Response:
 | ------------- | ------------------------------------------------------- |
 | `/home/earth` | Working directory; files are read from and written here |
 
-Files uploaded via the `files` array are placed in `/home/earth` before code execution. Any files your code writes to `/home/earth` will be returned in the response's `files` array (base64-encoded).
+Files uploaded via the `files` array are placed in `/home/earth` before code execution. Any files your code writes to `/home/earth` will be returned in the response's `result.output_files` array (base64-encoded).
 
 ### Pre-loaded Python Packages
 
@@ -244,7 +265,7 @@ The sandbox runs Python via Pyodide (WebAssembly). The following are **not avail
 
 ### Rate Limiting
 
-The server enforces a default rate limit of **10 requests per minute** per IP/session. If you hit the limit, wait and retry. Do not send rapid bursts of requests.
+The server enforces a default rate limit of **10 requests per minute per client IP**. If you hit the limit, wait and retry. Do not send rapid bursts of requests.
 
 ## Troubleshooting
 
@@ -263,8 +284,7 @@ The server enforces a default rate limit of **10 requests per minute** per IP/se
 When you are done using the sandbox:
 
 ```bash
-docker stop vivarium
-docker rm vivarium
+docker rm -f vivarium
 ```
 
 This stops the container and removes it, freeing all resources.

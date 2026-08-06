@@ -1,0 +1,52 @@
+services:
+  vivarium:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vivarium:latest
+    container_name: vivarium
+
+    # Security hardening
+    read_only: true
+    # Runtime writable paths. The pre-baked Pyodide cache in the image is NOT
+    # shadowed here (it must stay visible; it is readable even under --read-only).
+    tmpfs:
+      - /tmp
+      - /app/logs
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    # Resource limits
+    mem_limit: 2g
+    memswap_limit: 2g
+    cpus: 1.0
+    pids_limit: 100
+
+    # Network security
+    network_mode: "bridge"
+    hostname: vivarium
+
+    # Bind to internal interface only
+    # Remove or modify the ports binding for production behind a reverse proxy
+    # ports:
+    #   - "127.0.0.1:3080:3080"
+
+    # Environment variables
+    environment:
+      NODE_ENV: production
+      NODE_ENV_PRODUCTION: "true"
+      PORT: 3080
+      LOG_LEVEL: info
+
+    # Restart policy
+    restart: on-failure:3
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r = await fetch('http://localhost:3080/ready'); if (!r.ok) process.exit(1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

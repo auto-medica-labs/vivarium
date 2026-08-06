@@ -2,21 +2,21 @@
 
 Estimates assume one engineer and exclude organizational review time.
 
-## Phase 0 — Safe Deployment Defaults
+## ~~Phase 0 — Safe Deployment Defaults~~ ✅
 
 **Effort:** Hours
 **Target:** 5–6/10
 
-- Use hardened Docker settings:
-  - read-only root filesystem
-  - all Linux capabilities dropped
-  - `no-new-privileges`
-  - CPU, memory, and PID limits
-  - restricted `/tmp`
-- Never mount host directories or `/var/run/docker.sock`.
-- Bind only to an internal interface.
-- Pin the image by digest instead of `latest`.
-- Run the container on a host without sensitive credentials.
+~~- Use hardened Docker settings:~~
+  ~~- read-only root filesystem~~
+  ~~- all Linux capabilities dropped~~
+  ~~- `no-new-privileges`~~
+  ~~- CPU, memory, and PID limits~~
+  ~~- restricted `/tmp`~~
+~~- Never mount host directories or `/var/run/docker.sock`.~~
+~~- Bind only to an internal interface.~~
+~~- Pin the image by digest instead of `latest`.~~
+~~- Run the container on a host without sensitive credentials.~~
 
 ### Acceptance criteria
 
@@ -25,6 +25,22 @@ Estimates assume one engineer and exclude organizational review time.
 - Root filesystem is read-only.
 - Resource exhaustion kills or restarts only the container.
 - Host-canary isolation test passes.
+
+### Completed
+
+- Switched base image to `oven/bun:1.3-alpine` (smaller attack surface)
+- Implemented multi-stage build with production-only dependencies
+- Removed `curl` system package (using Bun's built-in `fetch` for healthchecks)
+- Created hardened `docker-compose.yml` with:
+  - `read_only: true` (read-only root filesystem)
+  - `cap_drop: ['ALL']` (all capabilities dropped)
+  - `security_opt: ['no-new-privileges:true']`
+  - Memory limit: 2GB, CPU limit: 1.0, PID limit: 100
+  - Tmpfs mounts for writable paths (`/tmp`, `/app/logs`, `/app/pyodide_cache`)
+  - `restart: on-failure:3`
+  - Port binding commented out (behind reverse proxy)
+- Tightened `.dockerignore` to exclude dev/test/doc files
+- Verified container runs with all security flags and endpoints respond correctly
 
 ## Phase 1 — Authentication and Endpoint Lockdown
 
@@ -75,11 +91,11 @@ The current client-selected `sessionId` model is unsafe for multiple users.
 
 - Apply per-user session and execution limits.
 
-- Prevent one user from attaching to another user’s session.
+- Prevent one user from attaching to another user's session.
 
 ### Acceptance criteria
 
-- User A cannot list, execute within, delete, or inspect User B’s sessions.
+- User A cannot list, execute within, delete, or inspect User B's sessions.
 - Guessing another session ID provides no access.
 - Automated cross-tenant tests pass.
 

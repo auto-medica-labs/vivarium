@@ -5,11 +5,11 @@ description: Activate this skill when you need to run arbitrary Python code or p
 
 # Vivarium Python Sandbox
 
-Self-contained instructions for provisioning and operating a sandboxed Python runtime using the Vivarium server. The server runs inside Docker with Pyodide (Python compiled to WebAssembly), providing isolation with no network access, no pip, no subprocess, and no shell.
+Self-contained instructions for provisioning and operating a sandboxed Python runtime using the Vivarium server. The server runs inside Docker with Pyodide (Python compiled to WebAssembly), providing isolation with no HTTP, no pip, no subprocess, and no shell.
 
 ## Setup
 
-The public image is published at GHCR. Set these variables once so every command below uses the same image and port:
+The sandbox runs in a Docker container based on the published Vivarium image, which ships a pre-warmed read-only Pyodide package cache (numpy/matplotlib/pandas) so no CDN access is needed at runtime. Set these variables once so every command below uses the same image and port:
 
 ```bash
 export VIVARIUM_IMAGE="ghcr.io/auto-medica-labs/vivarium:latest"
@@ -22,23 +22,37 @@ export VIVARIUM_PORT="3080"
 docker pull "$VIVARIUM_IMAGE"
 ```
 
-### 2. Run the Container
+### 2. Run the Container — hardened
 
 ```bash
 docker run -d --name vivarium \
-  -p "${VIVARIUM_PORT}:3080" \
+  --read-only \
+  --cap-drop ALL \
+  --security-opt no-new-privileges \
+  --memory 2g --memory-swap 2g --cpus 1.0 --pids-limit 100 \
+  --tmpfs /tmp \
+  --tmpfs /app/logs \
+  -p "127.0.0.1:${VIVARIUM_PORT}:3080" \
   "$VIVARIUM_IMAGE"
 ```
 
-- `-d` runs in detached (background) mode
-- `--name vivarium` gives the container a predictable name
-- `-p "${VIVARIUM_PORT}:3080"` maps the server port to your host
+- `--read-only` makes the root filesystem read-only; runtime writes go to the tmpfs mounts (`/tmp`, `/app/logs`)
+- `--cap-drop ALL` + `no-new-privileges` drop all Linux capabilities
+- `--memory/--cpus/--pids-limit` cap resources (2 GB, 1 core, 100 processes)
+- `-p 127.0.0.1:...` binds only to loopback so the server is reachable from this host but not published on the network
+
+**Important:** leave `/app/pyodide_cache` mounted from the image (read-only is fine). Do **not** replace it with a writable tmpfs or anonymous volume — a blank mount hides the pre-baked cache and breaks package loading, because there is no runtime access to refetch packages.
 
 **Port conflicts:** Set a different host port before running the container:
 
 ```bash
 export VIVARIUM_PORT="8888"
-docker run -d --name vivarium -p "${VIVARIUM_PORT}:3080" "$VIVARIUM_IMAGE"
+docker run -d --name vivarium \
+  --read-only --cap-drop ALL --security-opt no-new-privileges \
+  --memory 2g --memory-swap 2g --cpus 1.0 --pids-limit 100 \
+  --tmpfs /tmp --tmpfs /app/logs \
+  -p "127.0.0.1:${VIVARIUM_PORT}:3080" \
+  "$VIVARIUM_IMAGE"
 ```
 
 Then use `http://localhost:${VIVARIUM_PORT}` in all commands.
@@ -258,10 +272,11 @@ The following packages are available without installation:
 
 The sandbox runs Python via Pyodide (WebAssembly). The following are **not available**:
 
-- **No network access** — cannot make HTTP requests, connect to sockets, etc.
+- **No HTTP** — `urllib`, `requests`, and similar high-level libraries cannot reach any host (verified: HTTP calls to local and external hosts fail)
 - **No pip** — cannot install additional packages at runtime
-- **No subprocess** — cannot spawn child processes or run shell commands
-- **No shell access** — `os.system`, `subprocess`, etc. are not available
+- **No subprocess / no shell** — `subprocess` and `os.system` cannot spawn processes or run shell commands (they fail without side effects)
+
+> **Security note — raw TCP egress is not yet blocked.** While high-level HTTP is blocked, raw sockets (e.g. `socket.create_connection`) can still open outbound connections. Do not rely on network isolation for sensitive data; network containment is a pending hardening item.
 
 ### Rate Limiting
 
@@ -277,7 +292,7 @@ The server enforces a default rate limit of **10 requests per minute per client 
 | `timeout` error                                | Code ran too long           | Optimize code; avoid infinite loops                     |
 | `execution` error (NameError, TypeError, etc.) | Python exception            | Read error message and code context; fix code and retry |
 | Container not responding                       | Server crashed              | `docker restart vivarium`                               |
-| Port already in use                            | Port 3080 taken             | Use `-p <other-port>:3080` in the docker run command    |
+| Port already in use                            | Port 3080 taken             | Use `-p 127.0.0.1:<other-port>:3080` in the docker run command (keeps loopback binding)
 
 ## Cleanup
 

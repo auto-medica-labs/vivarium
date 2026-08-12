@@ -125,14 +125,12 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 
-# The default DejaVu font has no Thai glyphs, so register the bundled font
-# before user code creates any figures.
+# Google Sans covers Thai and Matplotlib's common Latin, Greek, Cyrillic,
+# and symbol glyphs, so users don't need to select fonts themselves.
 font_manager.fontManager.addfont(
-    "/home/earth/NotoSansThai-Variable.ttf"
+    "/home/earth/GoogleSans-Regular.ttf"
 )
-matplotlib.rcParams["font.family"] = "Noto Sans Thai"
-matplotlib.rcParams["font.sans-serif"] = ["Noto Sans Thai", "DejaVu Sans"]
-matplotlib.rcParams["axes.unicode_minus"] = False
+matplotlib.rcParams["font.family"] = "Google Sans"
 `);
   }
 

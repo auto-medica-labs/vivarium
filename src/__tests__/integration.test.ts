@@ -295,11 +295,11 @@ print("MEMFS:", "MEMFS" in keys)
     async () => {
       const { res, body } = await exec(
         "thai-font-test",
-        "import matplotlib.pyplot as plt\nfrom matplotlib import font_manager\nplt.plot([1, 2], [1, 2])\nplt.title('กราฟภาษาไทย')\nplt.savefig('/home/earth/thai.png')\nprint(font_manager.findfont('Noto Sans Thai', fallback_to_default=False))",
+        "import matplotlib.pyplot as plt\nfrom matplotlib import font_manager\nplt.plot([-1, 1], [-1, 1])\nplt.title('Latin café | Greek α | Cyrillic Ж | Thai กราฟภาษาไทย | minus −')\nplt.savefig('/home/earth/thai.png')\nprint(font_manager.findfont('Google Sans', fallback_to_default=False))",
       );
       expect(res.status).toBe(200);
       expect(body.success).toBe(true);
-      expect(body.result.std_out).toContain("NotoSansThai-Variable.ttf");
+      expect(body.result.std_out).toContain("GoogleSans-Regular.ttf");
       expect(body.result.std_err).not.toContain("Glyph");
       expect(body.result.output_files.some((file: any) => file.filename === "thai.png")).toBe(true);
     },

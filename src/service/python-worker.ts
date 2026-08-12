@@ -118,9 +118,22 @@ async function loadEnvironment(skipPackages = false): Promise<void> {
   if (!skipPackages) {
     await pyodide.loadPackage(["numpy", "matplotlib", "pandas"]);
 
-    await pyodide.runPythonAsync(
-      "import matplotlib.pyplot as plt\nimport pandas as pd\nimport numpy as np",
-    );
+    await pyodide.runPythonAsync(`
+import matplotlib
+from matplotlib import font_manager
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+
+# The default DejaVu font has no Thai glyphs, so register the bundled font
+# before user code creates any figures.
+font_manager.fontManager.addfont(
+    "/home/earth/NotoSansThai-Variable.ttf"
+)
+matplotlib.rcParams["font.family"] = "Noto Sans Thai"
+matplotlib.rcParams["font.sans-serif"] = ["Noto Sans Thai", "DejaVu Sans"]
+matplotlib.rcParams["axes.unicode_minus"] = False
+`);
   }
 
   // SECURITY: disable dangerous filesystem backends; keep only MEMFS.

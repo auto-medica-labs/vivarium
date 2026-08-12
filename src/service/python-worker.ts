@@ -118,9 +118,20 @@ async function loadEnvironment(skipPackages = false): Promise<void> {
   if (!skipPackages) {
     await pyodide.loadPackage(["numpy", "matplotlib", "pandas"]);
 
-    await pyodide.runPythonAsync(
-      "import matplotlib.pyplot as plt\nimport pandas as pd\nimport numpy as np",
-    );
+    await pyodide.runPythonAsync(`
+import matplotlib
+from matplotlib import font_manager
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+
+# Google Sans covers Thai and Matplotlib's common Latin, Greek, Cyrillic,
+# and symbol glyphs, so users don't need to select fonts themselves.
+font_manager.fontManager.addfont(
+    "/home/earth/GoogleSans-Regular.ttf"
+)
+matplotlib.rcParams["font.family"] = "Google Sans"
+`);
   }
 
   // SECURITY: disable dangerous filesystem backends; keep only MEMFS.

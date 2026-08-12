@@ -32,7 +32,7 @@ The worker needs `default_python_home/` and a writable `pyodide_cache/`. The Doc
 - `GET /sessions` — active session metadata.
 - `GET /metrics` — Prometheus-compatible metrics.
 
-See [the API guide](openwiki/architecture/api.md) for payloads, limits, and errors.
+See [the API guide](wiki/architecture/api.md) for payloads, limits, and errors.
 
 ## Development
 
@@ -41,15 +41,15 @@ bun run typecheck
 bun test
 ```
 
-Real Pyodide integration tests are slow. See [development and testing](openwiki/development/testing.md).
+Real Pyodide integration tests are slow. See [development and testing](wiki/development/testing.md).
 
 ## Documentation
 
-Start with [OpenWiki quickstart](openwiki/quickstart.md), then see:
+Start with [Wiki quickstart](wiki/quickstart.md), then see:
 
-- [Runtime architecture](openwiki/architecture/runtime.md)
-- [Operations](openwiki/operations.md)
-- [Development and testing](openwiki/development/testing.md)
+- [Runtime architecture](wiki/architecture/runtime.md)
+- [Operations](wiki/operations.md)
+- [Development and testing](wiki/development/testing.md)
 
 ## Deployment
 
@@ -68,7 +68,7 @@ docker pull ghcr.io/auto-medica-labs/vivarium:latest
 docker run --rm -p 3080:3080 ghcr.io/auto-medica-labs/vivarium:latest
 ```
 
-Configure the service with environment variables documented in [`.env.example`](.env.example) and [operations](openwiki/operations.md). Protect the deployment at the network or proxy layer, and configure `TRUSTED_PROXY_COUNT` only for known proxy hops.
+Configure the service with environment variables documented in [`.env.example`](.env.example) and [operations](wiki/operations.md). Protect the deployment at the network or proxy layer, and configure `TRUSTED_PROXY_COUNT` only for known proxy hops.
 
 ## License
 

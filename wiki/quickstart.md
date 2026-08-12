@@ -1,4 +1,4 @@
-# Vivarium OpenWiki
+# Vivarium Wiki
 
 Vivarium is a Bun/TypeScript HTTP service that runs user-supplied Python in a dedicated Pyodide WebAssembly worker per session. Sessions preserve Python state and files between executions, while inactivity cleanup and hard execution limits bound resource use.
 

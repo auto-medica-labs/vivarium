@@ -16,8 +16,8 @@ src/__tests__/*
 *.tmp
 skills/
 skills/*
-openwiki/
-openwiki/*
+wiki/
+wiki/*
 AGENTS.md
 IMPROVEMENT_PLAN.md
 README.md

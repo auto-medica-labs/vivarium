@@ -121,16 +121,22 @@ async function loadEnvironment(skipPackages = false): Promise<void> {
     await pyodide.runPythonAsync(`
 import matplotlib
 from matplotlib import font_manager
-import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 
-# Google Sans covers Thai and Matplotlib's common Latin, Greek, Cyrillic,
-# and symbol glyphs, so users don't need to select fonts themselves.
-font_manager.fontManager.addfont(
-    "/home/earth/GoogleSans-Regular.ttf"
-)
-matplotlib.rcParams["font.family"] = "Google Sans"
+# Register the bundled font before importing pyplot, then make it the default
+# family for every new session. User code can still intentionally override it.
+font_path = "/home/earth/GoogleSans-Regular.ttf"
+font_manager.fontManager.addfont(font_path)
+resolved_font = font_manager.findfont("Google Sans", fallback_to_default=False)
+if not resolved_font.endswith("GoogleSans-Regular.ttf"):
+    raise RuntimeError(f"Google Sans was not registered: {resolved_font}")
+matplotlib.rcParams.update({
+    "font.family": ["Google Sans"],
+    "font.sans-serif": ["Google Sans"],
+})
+
+import matplotlib.pyplot as plt
 `);
   }
 

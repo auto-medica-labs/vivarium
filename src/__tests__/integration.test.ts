@@ -258,23 +258,79 @@ except Exception as e:
   );
 
   test(
-    "dangerous filesystem backends are disabled",
+    "FFI escape modules are blocked",
     async () => {
       const code = `
-from pyodide_js import FS
-keys = list(FS.filesystems.object_keys())
-print("NODEFS:", "NODEFS" in keys)
-print("WORKERFS:", "WORKERFS" in keys)
-print("PROXYFS:", "PROXYFS" in keys)
-print("MEMFS:", "MEMFS" in keys)
+import importlib
+blocked = [
+    "pyodide_js",
+    "_pyodide_core",
+    "pyodide.ffi",
+    "pyodide.code",
+    "pyodide.http",
+    "pyodide.webloop",
+    "pyodide._package_loader",
+    "_pyodide.jsbind",
+    "_pyodide._core_docs",
+]
+for mod in blocked:
+    try:
+        importlib.import_module(mod)
+        print("IMPORT_ALLOWED:", mod)
+    except ImportError:
+        pass
+
+# The packages must not leak stale submodule attributes either.
+import pyodide
+for attr in ("ffi", "code", "http", "webloop", "console"):
+    if hasattr(pyodide, attr):
+        print("ATTR_LEAKED: pyodide." + attr)
+
+print("ok: all FFI escape modules blocked")
 `;
-      const { res, body } = await exec("fs-backend-test", code);
+      const { res, body } = await exec("ffi-block-test", code);
       expect(res.status).toBe(200);
       expect(body.success).toBe(true);
-      expect(body.result.std_out).toContain("NODEFS: False");
-      expect(body.result.std_out).toContain("WORKERFS: False");
-      expect(body.result.std_out).toContain("PROXYFS: False");
-      expect(body.result.std_out).toContain("MEMFS: True");
+      expect(body.result.std_out).toContain("ok: all FFI escape modules blocked");
+      expect(body.result.std_out).not.toContain("IMPORT_ALLOWED");
+      expect(body.result.std_out).not.toContain("ATTR_LEAKED");
+    },
+    30000,
+  );
+
+  test(
+    "prototype-chain escape via pyodide.ffi.to_js is blocked",
+    async () => {
+      const code = `
+# The CVE-2026-5752 variant: ffi.to_js({}).constructor.constructor reaches the
+# JS Function constructor, then globalThis. Every route to ffi must be dead.
+try:
+    import pyodide.ffi as ffi
+    F = ffi.to_js({}).constructor.constructor
+    raise AssertionError(f"escaped via import: {F}")
+except ImportError:
+    pass
+
+try:
+    import pyodide
+    F = pyodide.ffi.to_js({}).constructor.constructor
+    raise AssertionError(f"escaped via attribute: {F}")
+except AttributeError:
+    pass
+
+try:
+    import pyodide_js
+    F = pyodide_js.constructor.constructor
+    raise AssertionError(f"escaped via pyodide_js: {F}")
+except ImportError:
+    pass
+
+print("ok: prototype-chain escape blocked")
+`;
+      const { res, body } = await exec("ffi-escape-test", code);
+      expect(res.status).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.result.std_out).toContain("ok: prototype-chain escape blocked");
     },
     30000,
   );

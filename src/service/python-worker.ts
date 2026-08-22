@@ -120,6 +120,10 @@ async function loadEnvironment(skipPackages = false): Promise<void> {
 
     await pyodide.runPythonAsync(`
 import matplotlib
+# Agg renders to files without the pyodide.ffi-backed web backend. The sandbox
+# collects savefig output files rather than serving a canvas, and the web
+# backends would re-introduce the pyodide.ffi escape surface.
+matplotlib.use("agg")
 from matplotlib import font_manager
 import pandas as pd
 import numpy as np
@@ -139,6 +143,52 @@ matplotlib.rcParams.update({
 import matplotlib.pyplot as plt
 `);
   }
+
+  // SECURITY: block the pyodide.ffi / pyodide_js / _pyodide_core escape
+  // surface. Any of these can mint a JsProxy with a live prototype chain, and
+  // JsProxy exposes .constructor/.constructor -> Function -> globalThis
+  // (CVE-2026-5752 variant). Import blocking alone is not enough: the modules
+  // are pre-imported at init and linger as attributes on their packages, so we
+  // also purge sys.modules and strip the stale package attributes.
+  //
+  // Best-effort only: this lives in sys.meta_path, which sandboxed Python can
+  // mutate (remove the finder, re-import the builtin _pyodide_core, and the
+  // escape returns). The real fix is upstream Pyodide not exposing
+  // .constructor/.__proto__ on JsProxy. Defense-in-depth (Docker zero-caps,
+  // read-only root, no socket, no egress) is the actual host boundary.
+  await pyodide.runPythonAsync(`
+import sys
+import importlib.abc
+
+_BLOCKED_EXACT = {"pyodide_js", "_pyodide_core"}
+_BLOCKED_PREFIXES = ("pyodide.", "_pyodide.")
+
+
+class _BlockFinder(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path, target=None):
+        if fullname in _BLOCKED_EXACT or fullname.startswith(_BLOCKED_PREFIXES):
+            raise ImportError(f"module {fullname!r} is disabled in this sandbox")
+        return None
+
+
+sys.meta_path.insert(0, _BlockFinder())
+
+for _m in list(sys.modules):
+    if _m in _BLOCKED_EXACT or _m.startswith(_BLOCKED_PREFIXES):
+        sys.modules.pop(_m, None)
+
+for _pkg in ("pyodide", "_pyodide"):
+    try:
+        _mod = __import__(_pkg)
+        for _attr in list(dir(_mod)):
+            if not _attr.startswith("__"):
+                try:
+                    delattr(_mod, _attr)
+                except Exception:
+                    pass
+    except ImportError:
+        pass
+`);
 
   // SECURITY: disable dangerous filesystem backends; keep only MEMFS.
   delete (pyodide.FS.filesystems as any).NODEFS;

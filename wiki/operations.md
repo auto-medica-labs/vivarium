@@ -37,7 +37,7 @@ The Otari v0.56.1 conformance checker passes session lifecycle, Python execution
 
 ## Docker deployment
 
-`Dockerfile` uses `oven/bun:1.2-slim`, installs only production dependencies from `package.json` and `bun.lock`, copies `src/` and `default_python_home/`, preloads NumPy, Matplotlib, and pandas into a writable `pyodide_cache/`, exposes port 3080, and runs as the non-root `bun` user. Its Docker `HEALTHCHECK` calls `/ready` every 30 seconds with a 10-second timeout.
+`Dockerfile` uses `oven/bun:1.4-alpine`, installs only production dependencies from `package.json` and `bun.lock`, copies `src/` and `default_python_home/`, preloads NumPy, Matplotlib, and pandas into a writable `pyodide_cache/`, exposes port 3080, and runs as the non-root `bun` user. Its Docker `HEALTHCHECK` calls `/ready` every 30 seconds with a 10-second timeout.
 
 Pushes to `main` and `v*.*.*` tags publish `ghcr.io/auto-medica-labs/vivarium` via `.github/workflows/docker-publish.yml`. The workflow authenticates with the repository `GITHUB_TOKEN` and needs `packages: write` permission.
 

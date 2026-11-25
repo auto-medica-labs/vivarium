@@ -1,4 +1,4 @@
-FROM oven/bun:1.3-alpine AS base
+FROM oven/bun:1.4-alpine AS base
 
 WORKDIR /app
 
@@ -19,7 +19,7 @@ RUN mkdir -p pyodide_cache \
   && chown -R bun:bun pyodide_cache
 
 # Production stage with minimal footprint
-FROM oven/bun:1.3-alpine
+FROM oven/bun:1.4-alpine
 
 WORKDIR /app
 

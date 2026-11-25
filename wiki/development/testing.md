@@ -10,7 +10,7 @@ bun run typecheck
 bun test             # package script: Bun test, 30 s default timeout
 ```
 
-The GitHub Actions workflow at `.github/workflows/test.yml` runs on every push using Ubuntu, Bun `1.2.10`, `bun install`, and `bun run test`.
+The GitHub Actions workflow at `.github/workflows/test.yml` runs on every push using Ubuntu, Bun `1.4.5`, `bun install`, and `bun run test`.
 
 ## Test layers
 

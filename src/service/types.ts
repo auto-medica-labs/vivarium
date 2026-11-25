@@ -20,9 +20,9 @@ export interface PythonEnvironment {
   init(options?: { skipPackages?: boolean }): Promise<void>;
   waitForReady(): Promise<void>;
   runCode(code: string, files: any[], timeoutMs?: number, options?: { changedFilesOnly?: boolean }): Promise<CodeExecutionResponse>;
-  listFiles?(path: string): Promise<WorkspaceFileMetadata[]>;
-  readFile?(path: string): Promise<{ data: Uint8Array | null; isDirectory: boolean }>;
-  writeFile?(path: string, data: Uint8Array): Promise<void>;
+  listFiles(path: string): Promise<WorkspaceFileMetadata[]>;
+  readFile(path: string): Promise<{ data: Uint8Array | null; isDirectory: boolean }>;
+  writeFile(path: string, data: Uint8Array): Promise<void>;
   cleanup(): Promise<void>;
   terminate(): Promise<void>;
 }

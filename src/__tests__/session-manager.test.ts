@@ -14,6 +14,9 @@ function makeMockEnv(): PythonEnvironment {
       std_err: "",
       code_runtime: 0,
     }),
+    listFiles: async () => [],
+    readFile: async () => ({ data: null, isDirectory: false }),
+    writeFile: async () => {},
   };
 }
 
@@ -30,6 +33,9 @@ function makeTrackedEnv(terminated: { current: boolean }): PythonEnvironment {
       std_err: "",
       code_runtime: 0,
     }),
+    listFiles: async () => [],
+    readFile: async () => ({ data: null, isDirectory: false }),
+    writeFile: async () => {},
   };
 }
 

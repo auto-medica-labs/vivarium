@@ -211,7 +211,6 @@ export function createOtariPlugin(
     .get("/sessions/:session_id/files/list", async ({ params, query }) => {
       const session = requireOtariSession(sessionManager, params.session_id);
       const listPath = validateRelativePath(query.path ?? ".", true);
-      if (!session.environment.listFiles) throw new ProtocolError(503, "Workspace file operations are unavailable");
       try {
         return { files: await session.environment.listFiles(listPath) };
       } catch (error) {
@@ -221,7 +220,6 @@ export function createOtariPlugin(
     .get("/sessions/:session_id/files", async ({ params, query, set }) => {
       const session = requireOtariSession(sessionManager, params.session_id);
       const filePath = validateRelativePath(query.path, false);
-      if (!session.environment.readFile) throw new ProtocolError(503, "Workspace file operations are unavailable");
       try {
         const file = await session.environment.readFile(filePath);
         if (file.isDirectory) throw new ProtocolError(400, "Path names a directory, not a file");
@@ -261,7 +259,6 @@ export function createOtariPlugin(
         ? formPath
         : (file.name || "upload");
       const destination = validateRelativePath(chosenPath, false);
-      if (!session.environment.writeFile) throw new ProtocolError(503, "Workspace file operations are unavailable");
       try {
         const bytes = new Uint8Array(await file.arrayBuffer());
         await session.environment.writeFile(destination, bytes);

@@ -276,8 +276,6 @@ The sandbox runs Python via Pyodide (WebAssembly). The following are **not avail
 - **No pip** — cannot install additional packages at runtime
 - **No subprocess / no shell** — `subprocess` and `os.system` cannot spawn processes or run shell commands (they fail without side effects)
 
-> **Security note — raw TCP egress is not yet blocked.** While high-level HTTP is blocked, raw sockets (e.g. `socket.create_connection`) can still open outbound connections. Do not rely on network isolation for sensitive data; network containment is a pending hardening item.
-
 ### Rate Limiting
 
 The server enforces a default rate limit of **10 requests per minute per client IP**. If you hit the limit, wait and retry. Do not send rapid bursts of requests.

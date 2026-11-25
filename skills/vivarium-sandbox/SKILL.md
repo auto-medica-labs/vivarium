@@ -284,15 +284,15 @@ The server enforces a default rate limit of **10 requests per minute per client 
 
 ## Troubleshooting
 
-| Symptom                                        | Cause                       | Fix                                                     |
-| ---------------------------------------------- | --------------------------- | ------------------------------------------------------- |
-| Health check fails / connection refused        | Server not running          | Run `docker run` command to start the container         |
-| `sessionId` validation error                   | Missing query parameter     | Add `?sessionId=default` to the request URL             |
-| `resource_limit` error                         | Too many or too large files | Reduce to ≤10 files, each ≤10 MB                        |
-| `timeout` error                                | Code ran too long           | Optimize code; avoid infinite loops                     |
-| `execution` error (NameError, TypeError, etc.) | Python exception            | Read error message and code context; fix code and retry |
-| Container not responding                       | Server crashed              | `docker restart vivarium`                               |
-| Port already in use                            | Port 3080 taken             | Use `-p 127.0.0.1:<other-port>:3080` in the docker run command (keeps loopback binding)
+| Symptom                                        | Cause                       | Fix                                                                                     |
+| ---------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------------- |
+| Health check fails / connection refused        | Server not running          | Run `docker run` command to start the container                                         |
+| `sessionId` validation error                   | Missing query parameter     | Add `?sessionId=default` to the request URL                                             |
+| `resource_limit` error                         | Too many or too large files | Reduce to ≤10 files, each ≤10 MB                                                        |
+| `timeout` error                                | Code ran too long           | Optimize code; avoid infinite loops                                                     |
+| `execution` error (NameError, TypeError, etc.) | Python exception            | Read error message and code context; fix code and retry                                 |
+| Container not responding                       | Server crashed              | `docker restart vivarium`                                                               |
+| Port already in use                            | Port 3080 taken             | Use `-p 127.0.0.1:<other-port>:3080` in the docker run command (keeps loopback binding) |
 
 ## Cleanup
 

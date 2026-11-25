@@ -4,26 +4,26 @@
 
 Configuration is read when `src/config/index.ts` is imported. Integer values must be non-negative; execution, upload, session, output, and initialization caps explicitly reject zero. Set environment variables before starting the process.
 
-| Variable                      |          Default | Purpose                                                    |
-| ----------------------------- | ---------------: | ---------------------------------------------------------- |
-| `PORT`                        |           `3080` | HTTP listen port                                           |
-| `SESSION_TIMEOUT_MINUTES`     |             `10` | Idle session lifetime                                      |
-| `EXECUTION_TIMEOUT_MS`        |          `60000` | Hard per-execution timeout                                 |
-| `MAX_FILE_SIZE_BYTES`         |       `10485760` | Maximum decoded size of one input file                     |
-| `MAX_FILES_PER_REQUEST`       |             `10` | Input file count cap                                       |
-| `RATE_LIMIT_REQUESTS_PER_MIN` |             `10` | Per-IP request limit in a fixed one-minute window          |
-| `MAX_SESSIONS`                |             `20` | Active session cap                                         |
-| `MAX_CONCURRENT_INITS`        |              `2` | Concurrent Pyodide initialization slots                    |
-| `MAX_OUTPUT_FILES`            |            `100` | Returned output-file count cap                             |
-| `MAX_OUTPUT_BYTE_SIZE`        |       `10485760` | Total returned output bytes cap                            |
-| `OTARI_ROUTE_PREFIX`           |          `/otari` | Prefix for the Otari code-execution adapter                |
-| `OTARI_MAX_IDLE_TIMEOUT_SECONDS` | `600`           | Maximum idle lease accepted by the adapter                 |
-| `OTARI_MAX_LIFETIME_SECONDS`  |          `3600` | Maximum lifetime accepted by the adapter                   |
-| `OTARI_CLEANUP_INTERVAL_MS`   |          `1000` | Adapter lease cleanup cadence (must be at most one second) |
-| `TRUSTED_PROXY_COUNT`         |              `0` | Number of trusted proxies for client-IP extraction         |
-| `LOG_LEVEL`                   |           `info` | Pino log level                                             |
-| `LOG_FILE_PATH`               | `./logs/app.log` | Production log destination                                 |
-| `NODE_ENV_PRODUCTION`         |          `false` | Adds NDJSON file logging and hides internal error messages |
+| Variable                         |          Default | Purpose                                                    |
+| -------------------------------- | ---------------: | ---------------------------------------------------------- |
+| `PORT`                           |           `3080` | HTTP listen port                                           |
+| `SESSION_TIMEOUT_MINUTES`        |             `10` | Idle session lifetime                                      |
+| `EXECUTION_TIMEOUT_MS`           |          `60000` | Hard per-execution timeout                                 |
+| `MAX_FILE_SIZE_BYTES`            |       `10485760` | Maximum decoded size of one input file                     |
+| `MAX_FILES_PER_REQUEST`          |             `10` | Input file count cap                                       |
+| `RATE_LIMIT_REQUESTS_PER_MIN`    |             `10` | Per-IP request limit in a fixed one-minute window          |
+| `MAX_SESSIONS`                   |             `20` | Active session cap                                         |
+| `MAX_CONCURRENT_INITS`           |              `2` | Concurrent Pyodide initialization slots                    |
+| `MAX_OUTPUT_FILES`               |            `100` | Returned output-file count cap                             |
+| `MAX_OUTPUT_BYTE_SIZE`           |       `10485760` | Total returned output bytes cap                            |
+| `OTARI_ROUTE_PREFIX`             |         `/otari` | Prefix for the Otari code-execution adapter                |
+| `OTARI_MAX_IDLE_TIMEOUT_SECONDS` |            `600` | Maximum idle lease accepted by the adapter                 |
+| `OTARI_MAX_LIFETIME_SECONDS`     |           `3600` | Maximum lifetime accepted by the adapter                   |
+| `OTARI_CLEANUP_INTERVAL_MS`      |           `1000` | Adapter lease cleanup cadence (must be at most one second) |
+| `TRUSTED_PROXY_COUNT`            |              `0` | Number of trusted proxies for client-IP extraction         |
+| `LOG_LEVEL`                      |           `info` | Pino log level                                             |
+| `LOG_FILE_PATH`                  | `./logs/app.log` | Production log destination                                 |
+| `NODE_ENV_PRODUCTION`            |          `false` | Adds NDJSON file logging and hides internal error messages |
 
 `.env.example` is the canonical list. The checked-in README has an older timeout example; use the config source and `.env.example` above.
 

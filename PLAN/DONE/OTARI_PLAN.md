@@ -22,14 +22,14 @@ runtime, not a process spawned by the Bun server.
 
 The adapter lives beneath a base path, initially `/otari`:
 
-| Otari operation | Vivarium adapter endpoint |
-| --- | --- |
-| CreateSession | `POST /otari/sessions` |
-| Execute | `POST /otari/sessions/{session_id}/exec` |
-| DestroySession | `DELETE /otari/sessions/{session_id}` |
-| ListFiles | `GET /otari/sessions/{session_id}/files/list` |
-| GetFile | `GET /otari/sessions/{session_id}/files?path=...` |
-| PutFile | `POST /otari/sessions/{session_id}/files` |
+| Otari operation | Vivarium adapter endpoint                         |
+| --------------- | ------------------------------------------------- |
+| CreateSession   | `POST /otari/sessions`                            |
+| Execute         | `POST /otari/sessions/{session_id}/exec`          |
+| DestroySession  | `DELETE /otari/sessions/{session_id}`             |
+| ListFiles       | `GET /otari/sessions/{session_id}/files/list`     |
+| GetFile         | `GET /otari/sessions/{session_id}/files?path=...` |
+| PutFile         | `POST /otari/sessions/{session_id}/files`         |
 
 Otari should be configured with an `OTARI_SANDBOX_URL` ending in `/otari`.
 The existing endpoints—including `POST /exec?sessionId=...`—remain unchanged.
@@ -70,9 +70,11 @@ The existing endpoints—including `POST /exec?sessionId=...`—remain unchanged
 
 - Generate a `tool_use_id` when it is absent and echo it both at the response
   root and in `result_block`.
+
 - Clamp `timeout_seconds` to the configured execution-time limit and pass the
   effective limit into the worker-client timeout race. Do not hard-code a
   second limit.
+
 - Successful Python execution returns HTTP `200` and this shape:
 
   ```json
@@ -96,8 +98,10 @@ The existing endpoints—including `POST /exec?sessionId=...`—remain unchanged
 - A Python exception is still an HTTP `200`: set a nonzero `return_code` and
   include the diagnostic in `stderr`. Do not return Vivarium's legacy
   `{ success: false }` envelope.
+
 - Unsupported known tool kinds and unknown tools return `400`; malformed
   bodies return `422` (or `400` for an unknown tool).
+
 - A worker execution that cannot complete, including timeout recovery, uses a
   documented protocol-compatible operation error rather than the legacy `504`
   response. Define and test the precise status/error body before release.
@@ -162,8 +166,7 @@ runtime package/module registration.
 
 - Add a dedicated Otari route module or Elysia plugin and mount it from
   `buildApp()`.
-- Use adapter-specific error formatting so protocol routes produce `{ detail:
-  ... }` (or another documented protocol error body), while legacy routes
+- Use adapter-specific error formatting so protocol routes produce `{ detail: ... }` (or another documented protocol error body), while legacy routes
   retain Vivarium's `{ success: false, error: ... }` format.
 - Map exact protocol statuses: `201`, `200`, `204`, `400`/`422`, `403`, `404`,
   `409`, `413`, and `503` as applicable.
@@ -205,12 +208,12 @@ required tool-kind checks pass.
 ## Delivery Sequence
 
 1. Define adapter types, status/error mapping, configuration, and tests.
-2. Extend `SessionManager` for lease-aware server-generated sessions.
-3. Extend the worker/client protocol for workspace file operations and
+1. Extend `SessionManager` for lease-aware server-generated sessions.
+1. Extend the worker/client protocol for workspace file operations and
    per-call timeout limits.
-4. Implement the Otari routes and result-block translation.
-5. Add integration/security tests, run type checking and the existing suite.
-6. Test against a local Otari instance and its conformance tooling; document
+1. Implement the Otari routes and result-block translation.
+1. Add integration/security tests, run type checking and the existing suite.
+1. Test against a local Otari instance and its conformance tooling; document
    the explicitly unsupported tool kinds and deployment configuration.
 
 ## Acceptance Criteria

@@ -8,11 +8,11 @@ Estimates assume one engineer and exclude organizational review time.
 **Target:** 5–6/10
 
 ~~- Use hardened Docker settings:~~
-  ~~- read-only root filesystem~~
-  ~~- all Linux capabilities dropped~~
-  ~~- `no-new-privileges`~~
-  ~~- CPU, memory, and PID limits~~
-  ~~- restricted `/tmp`~~
+~~- read-only root filesystem~~
+~~- all Linux capabilities dropped~~
+~~- `no-new-privileges`~~
+~~- CPU, memory, and PID limits~~
+~~- restricted `/tmp`~~
 ~~- Never mount host directories or `/var/run/docker.sock`.~~
 ~~- Bind only to an internal interface.~~
 ~~- Pin the image by digest instead of `latest`.~~

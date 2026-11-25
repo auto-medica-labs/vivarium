@@ -37,6 +37,15 @@ describe("Vivarium integration", () => {
     return { res, body: (await res.json()) as any };
   }
 
+  async function otariExec(sessionId: string, body: unknown) {
+    const res = await app.handle(new Request(`http://localhost/otari/sessions/${sessionId}/exec`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }));
+    return { res, body: await res.json() as any };
+  }
+
   test("basic execution prints to stdout", async () => {
     const { res, body } = await exec("basic-test", "print('hello')");
     expect(res.status).toBe(200);
@@ -81,6 +90,68 @@ describe("Vivarium integration", () => {
     expect(body.success).toBe(true);
     expect(body.result.std_out).toContain("hello");
   });
+
+  test("Otari sessions preserve Python state and expose confined workspace files", async () => {
+    rateLimiter.reset();
+    const created = await app.handle(new Request("http://localhost/otari/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idle_timeout_seconds: 9999, max_lifetime_seconds: 9999, image: "ignored" }),
+    }));
+    expect(created.status).toBe(201);
+    const lease = await created.json() as any;
+    expect(lease.idle_timeout_seconds).toBe(600);
+    expect(lease.max_lifetime_seconds).toBe(3600);
+
+    const first = await otariExec(lease.session_id, {
+      tool: "code_execution", input: { code: "value = 40\nprint('first')" },
+    });
+    expect(first.res.status).toBe(200);
+    expect(first.body.result_block.content.stdout).toContain("first");
+
+    const second = await otariExec(lease.session_id, {
+      tool: "code_execution", tool_use_id: "stateful-call",
+      input: { code: "print(value + 2)\nopen('artifact.bin', 'wb').write(bytes([0, 255]))" },
+    });
+    expect(second.res.status).toBe(200);
+    expect(second.body.tool_use_id).toBe("stateful-call");
+    expect(second.body.result_block.content.stdout).toContain("42");
+    expect(second.body.result_block.content.content).toContainEqual({
+      type: "code_execution_output", file_id: "artifact.bin", filename: "artifact.bin",
+    });
+    expect(JSON.stringify(second.body)).not.toContain("b64_data");
+
+    const form = new FormData();
+    form.append("file", new File([new Uint8Array([0, 1, 255])], "upload.bin"));
+    const uploadRequest = new Request(`http://localhost/otari/sessions/${lease.session_id}/files`, { method: "POST" });
+    Object.defineProperty(uploadRequest, "formData", { value: async () => form });
+    const upload = await app.handle(uploadRequest);
+    expect(upload.status).toBe(201);
+
+    const listing = await app.handle(new Request(`http://localhost/otari/sessions/${lease.session_id}/files/list`));
+    expect((await listing.json() as any).files.map((file: any) => file.path)).toContain("upload.bin");
+    const download = await app.handle(new Request(`http://localhost/otari/sessions/${lease.session_id}/files?path=upload.bin`));
+    expect(download.status).toBe(200);
+    expect([...new Uint8Array(await download.arrayBuffer())]).toEqual([0, 1, 255]);
+
+    const symlink = await otariExec(lease.session_id, {
+      tool: "code_execution", input: { code: "import os\nos.symlink('/etc/passwd', 'outside.txt')\nos.symlink('/etc', 'outside-dir')" },
+    });
+    expect(symlink.body.result_block.content.return_code).toBe(0);
+    const blockedParent = await app.handle(new Request(`http://localhost/otari/sessions/${lease.session_id}/files?path=outside-dir/passwd`));
+    expect(blockedParent.status).toBe(403);
+
+    const timeout = await otariExec(lease.session_id, {
+      tool: "code_execution", timeout_seconds: 1, input: { code: "while True: pass" },
+    });
+    expect(timeout.res.status).toBe(503);
+    expect(timeout.body.detail).toContain("worker was recovered");
+    const recovered = await otariExec(lease.session_id, {
+      tool: "code_execution", input: { code: "print('recovered')" },
+    });
+    expect(recovered.res.status).toBe(200);
+    expect(recovered.body.result_block.content.stdout).toContain("recovered");
+  }, 60000);
 
   test("file count limit", async () => {
     const files = Array.from({ length: 11 }, (_, i) => ({

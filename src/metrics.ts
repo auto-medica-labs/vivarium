@@ -79,13 +79,13 @@ export class Metrics {
   render(activeSessions: number): string {
     const lines: string[] = [];
 
-    lines.push("# HELP vivarium_requests_total Total /exec requests by final status");
+    lines.push("# HELP vivarium_requests_total Total Python execution requests by final status");
     lines.push("# TYPE vivarium_requests_total counter");
     for (const [status, count] of this.requestsTotal) {
       lines.push(`vivarium_requests_total{status="${status}"} ${count}`);
     }
 
-    lines.push("# HELP vivarium_executions_total Total /exec invocations");
+    lines.push("# HELP vivarium_executions_total Total Python execution invocations across APIs");
     lines.push("# TYPE vivarium_executions_total counter");
     lines.push(`vivarium_executions_total ${this.executionsTotal}`);
 
@@ -122,7 +122,7 @@ export class Metrics {
     lines.push(`vivarium_worker_init_duration_ms_sum ${this.initSum}`);
     lines.push(`vivarium_worker_init_duration_ms_count ${this.initCount}`);
 
-    lines.push("# HELP vivarium_request_duration_ms Full /exec HTTP request duration distribution");
+    lines.push("# HELP vivarium_request_duration_ms Full Python execution HTTP request duration distribution");
     lines.push("# TYPE vivarium_request_duration_ms histogram");
     for (const upper of DURATION_BUCKETS) {
       const count = this.requestBuckets.get(upper) ?? 0;

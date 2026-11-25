@@ -4,6 +4,7 @@ import { logger } from "../logger";
 import { metrics } from "../metrics";
 import { AppError } from "../errors";
 import { getBase64ByteSize } from "../utils";
+import { WorkspaceFileError, type WorkspaceFileMetadata } from "./types";
 
 export class PyodidePythonEnvironment implements PythonEnvironment {
   private worker: Worker | null = null;
@@ -80,9 +81,31 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
     await this.init();
   }
 
+  async listFiles(path: string): Promise<WorkspaceFileMetadata[]> {
+    if (!this.worker) await this.init();
+    const response = await this.sendMessage<{ success: boolean; files?: WorkspaceFileMetadata[]; error?: { code: string; message: string } }>("listFiles", { path });
+    if (!response.success) throw new WorkspaceFileError(response.error?.code as any, response.error?.message ?? "Unable to list workspace files");
+    return response.files ?? [];
+  }
+
+  async readFile(path: string): Promise<{ data: Uint8Array | null; isDirectory: boolean }> {
+    if (!this.worker) await this.init();
+    const response = await this.sendMessage<{ success: boolean; found?: boolean; isDirectory?: boolean; data?: Uint8Array; error?: { code: string; message: string } }>("readFile", { path });
+    if (!response.success) throw new WorkspaceFileError(response.error?.code as any, response.error?.message ?? "Unable to read workspace file");
+    return { data: response.found ? new Uint8Array(response.data ?? []) : null, isDirectory: response.isDirectory === true };
+  }
+
+  async writeFile(path: string, data: Uint8Array): Promise<void> {
+    if (!this.worker) await this.init();
+    const response = await this.sendMessage<{ success: boolean; error?: { code: string; message: string } }>("writeFile", { path, data });
+    if (!response.success) throw new WorkspaceFileError(response.error?.code as any, response.error?.message ?? "Unable to write workspace file");
+  }
+
   async runCode(
     code: string,
     files: { filename: string; b64_data: string }[],
+    timeoutMs: number = config.executionTimeoutMs,
+    options: { changedFilesOnly?: boolean } = {},
   ): Promise<CodeExecutionResponse> {
     const startCode = Date.now();
     const reqLogger = logger.child({ requestId: `run-${this.messageId}` });
@@ -160,16 +183,13 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
 
       const runPromise = this.sendMessage<{ result: CodeExecutionResponse }>(
         "runCode",
-        { code, files, maxOutputFiles: config.maxOutputFiles, maxOutputByteSize: config.maxOutputByteSize },
+        { code, files, changedFilesOnly: options.changedFilesOnly === true, maxOutputFiles: config.maxOutputFiles, maxOutputByteSize: config.maxOutputByteSize },
       );
 
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error("EXECUTION_TIMEOUT")),
-          config.executionTimeoutMs,
-        ),
-      );
-
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error("EXECUTION_TIMEOUT")), timeoutMs);
+      });
       try {
         const response = await Promise.race([runPromise, timeoutPromise]);
         reqLogger.info(
@@ -180,7 +200,7 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
       } catch (error: any) {
         if (error.message === "EXECUTION_TIMEOUT") {
           reqLogger.error(
-            { durationMs: config.executionTimeoutMs },
+            { durationMs: timeoutMs },
             "Execution timed out, respawning worker"
           );
           // Hard kill the worker and respawn
@@ -192,12 +212,12 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
           await this.init();
 
           reqLogger.error(
-            { durationMs: config.executionTimeoutMs },
+            { durationMs: timeoutMs },
             "Execution timed out"
           );
           throw new AppError(
             "timeout",
-            `Execution timed out after ${config.executionTimeoutMs}ms`,
+            `Execution timed out after ${timeoutMs}ms`,
           );
         }
 
@@ -215,6 +235,8 @@ export class PyodidePythonEnvironment implements PythonEnvironment {
           "system",
           error.message || "Unknown worker error",
         );
+      } finally {
+        if (timeout) clearTimeout(timeout);
       }
     };
 

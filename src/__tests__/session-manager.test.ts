@@ -66,6 +66,61 @@ describe("SessionManager", () => {
     expect(sm.getSession("nope")).toBeNull();
   });
 
+  test("Otari sessions have generated ids, clamped leases and pure lookup", async () => {
+    factory = makeMockEnv;
+    sm = new SessionManager(10, 5, factory);
+    const session = await sm.createOtariSession(7, 12);
+    expect(session.id).not.toBe("");
+    expect(session.otari).toBe(true);
+    expect(session.idleTimeoutMs).toBe(7000);
+    expect(session.maxLifetimeMs).toBe(12000);
+    const lastActivity = session.lastAccessedAt;
+    await new Promise((r) => setTimeout(r, 5));
+    expect(sm.lookupOtariSession(session.id)).toBe(session);
+    expect(session.lastAccessedAt).toBe(lastActivity);
+  });
+
+  test("Otari lookup does not auto-create and execution is single-flight", async () => {
+    factory = makeMockEnv;
+    sm = new SessionManager(10, 5, factory);
+    expect(sm.acquireOtariExecution("missing")).toBe("missing");
+    const session = await sm.createOtariSession(10, 20);
+    expect(sm.acquireOtariExecution(session.id)).toBe(session);
+    expect(sm.acquireOtariExecution(session.id)).toBe("busy");
+    sm.releaseOtariExecution(session);
+    expect(sm.acquireOtariExecution(session.id)).toBe(session);
+  });
+
+  test("maximum lifetime expires even when activity is recent", async () => {
+    factory = makeMockEnv;
+    sm = new SessionManager(10, 5, factory);
+    const session = await sm.createOtariSession(60, 2);
+    session.createdAt -= 2500;
+    session.lastAccessedAt = Date.now();
+    expect(await sm.manualCleanup()).toBe(1);
+    expect(sm.lookupOtariSession(session.id)).toBeNull();
+  });
+
+  test("concurrent creates reserve capacity and initialize an id only once", async () => {
+    let initCount = 0;
+    let releaseInit!: () => void;
+    factory = () => ({
+      ...makeMockEnv(),
+      init: async () => {
+        initCount++;
+        await new Promise<void>((resolve) => { releaseInit = resolve; });
+      },
+    });
+    sm = new SessionManager(10, 1, factory);
+    const first = sm.getOrCreateSession("same");
+    const duplicate = sm.getOrCreateSession("same");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(initCount).toBe(1);
+    releaseInit();
+    expect(await first).toBe(await duplicate);
+    await expect(sm.getOrCreateSession("at-capacity")).rejects.toThrow("Maximum active sessions reached");
+  });
+
   test("getSession updates lastAccessedAt", async () => {
     factory = makeMockEnv;
     sm = new SessionManager(10, 5, factory);

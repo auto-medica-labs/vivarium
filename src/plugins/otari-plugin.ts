@@ -4,8 +4,8 @@ import { AppError } from "../errors";
 import { config } from "../config";
 import { logger } from "../logger";
 import { metrics } from "../metrics";
-import { SessionManager, type ManagedSession } from "./session-manager";
-import { WorkspaceFileError } from "./types";
+import { SessionManager, type ManagedSession } from "../service/session-manager";
+import { WorkspaceFileError } from "../service/types";
 
 class ProtocolError extends Error {
   constructor(

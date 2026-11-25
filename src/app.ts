@@ -9,7 +9,7 @@ import { AppError } from "./errors";
 import { metrics } from "./metrics";
 import { getBase64ByteSize } from "./utils";
 import { RateLimiter } from "./rate-limiter";
-import { createOtariPlugin } from "./service/otari-plugin";
+import { createOtariPlugin } from "./plugins/otari-plugin";
 
 export function buildApp() {
   const rateLimiter = new RateLimiter(config.rateLimitRequestsPerMin);

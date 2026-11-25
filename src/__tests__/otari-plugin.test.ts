@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Elysia } from "elysia";
-import { createOtariPlugin } from "../service/otari-plugin";
+import { createOtariPlugin } from "../plugins/otari-plugin";
 import { SessionManager } from "../service/session-manager";
 import type { CodeExecutionResponse, PythonEnvironment, WorkspaceFileMetadata } from "../service/types";
 

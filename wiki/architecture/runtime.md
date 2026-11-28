@@ -42,6 +42,7 @@ Python exceptions are caught inside the worker and returned as execution results
 | Area                  | Source                                | Responsibility                                                    |
 | --------------------- | ------------------------------------- | ----------------------------------------------------------------- |
 | HTTP composition      | `src/app.ts`                          | Elysia routes, validation, rate limiting, errors, request logging |
+| HTTP plugins          | `src/plugins/otari-plugin.ts`         | Otari protocol adapter: sessions, exec, workspace files           |
 | Configuration         | `src/config/index.ts`, `src/utils.ts` | Environment parsing and non-zero resource constraints             |
 | Session lifecycle     | `src/service/session-manager.ts`      | Session map, init semaphore, idle cleanup, shutdown               |
 | Worker client         | `src/service/python-interpreter.ts`   | Worker messages, per-session lock, timeout recovery               |

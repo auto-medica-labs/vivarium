@@ -75,3 +75,13 @@ Uploads are limited by `MAX_FILES_PER_REQUEST` and `MAX_FILE_SIZE_BYTES` per fil
 Every request receives an `x-request-id` response header. A supplied `x-request-id` is preserved; otherwise the server generates a UUID. Rate limiting applies to non-probe endpoints, including `/exec` and `/sessions`, and uses the direct connection IP by default. Configure `TRUSTED_PROXY_COUNT` only when the deployment has that many trusted reverse proxies.
 
 There is no authentication or authorization in the application. Any client that can reach the HTTP port can execute Python and inspect sessions/metrics; put it behind network access control or an authenticated reverse proxy.
+
+## Otari protocol adapter
+
+The separate Elysia plugin mounted at `/otari` implements protocol v1 for Python execution and workspace files. Point `OTARI_SANDBOX_URL` at a URL ending in `/otari` (or the configured `OTARI_ROUTE_PREFIX`). It provides:
+
+- `POST /otari/sessions`, `DELETE /otari/sessions/{session_id}`
+- `POST /otari/sessions/{session_id}/exec`
+- `GET /otari/sessions/{session_id}/files/list`, `GET /otari/sessions/{session_id}/files?path=...`, and multipart `POST /otari/sessions/{session_id}/files`
+
+Session IDs are server generated. Execution requires an existing adapter session and accepts only `code_execution`; Bash and text-editor tools return `400`. Python exceptions return `200` with `return_code: 1`; failures that prevent execution from completing return `503` with `{ "detail": "..." }`. File paths are relative to `/home/earth`; traversal and symbolic-link paths are rejected, and uploads retain the configured per-file size cap. The existing client-selected `/exec?sessionId=...` behavior is unchanged.

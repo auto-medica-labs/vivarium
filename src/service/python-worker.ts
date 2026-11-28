@@ -218,6 +218,11 @@ for _pkg in ("pyodide", "_pyodide"):
 
 function listFilesRecursive(dir: string): string[] {
   const files: string[] = [];
+  try {
+    assertNoWorkspaceSymlinks(dir);
+  } catch {
+    return files;
+  }
   const entries = pyodide!.FS.readdir(dir);
 
   for (let i = 0; i < entries.length; i++) {
@@ -226,6 +231,8 @@ function listFilesRecursive(dir: string): string[] {
     if (default_file_names.has(entry)) continue;
 
     const fullPath = pyodide!.PATH.join2(dir, entry);
+    const lstat = pyodide!.FS.lstat(fullPath);
+    if ((lstat.mode & 0o170000) === 0o120000) continue;
 
     if (pyodide!.FS.isDir(pyodide!.FS.stat(fullPath).mode)) {
       files.push(...listFilesRecursive(fullPath));
@@ -268,11 +275,94 @@ function getBase64ByteSize(b64: string): number {
   return (b64.length * 3) / 4 - padding;
 }
 
+function resolveWorkspacePath(relativePath: string): string {
+  if (typeof relativePath !== "string" || relativePath.startsWith("/") || relativePath.includes("\\") || /[\x00-\x1f\x7f]/.test(relativePath)) {
+    throw Object.assign(new Error("Invalid workspace path"), { workspaceCode: "invalid" });
+  }
+  if (relativePath.split("/").some((part) => part === "..")) {
+    throw Object.assign(new Error("Path escapes the workspace"), { workspaceCode: "invalid" });
+  }
+  const resolved = path.posix.resolve(pythonEnvironmentHomeDir, relativePath || ".");
+  if (resolved !== pythonEnvironmentHomeDir && !resolved.startsWith(`${pythonEnvironmentHomeDir}/`)) {
+    throw Object.assign(new Error("Path escapes the workspace"), { workspaceCode: "invalid" });
+  }
+  return resolved;
+}
+
+function assertNoWorkspaceSymlinks(target: string): void {
+  let current = "";
+  for (const part of target.split("/").filter(Boolean)) {
+    current += `/${part}`;
+    let stat: any;
+    try {
+      stat = pyodide!.FS.lstat(current);
+    } catch (error: any) {
+      if (error.code === "ENOENT" || error.errno === 44 || /ENOENT|No such file/.test(error.message ?? "")) return;
+      throw error;
+    }
+    if ((stat.mode & 0o170000) === 0o120000) {
+      throw Object.assign(new Error("Workspace paths cannot traverse symbolic links"), { workspaceCode: "invalid" });
+    }
+  }
+}
+
+function workspaceError(error: any): { code: string; message: string } {
+  const isNotFound = error.code === "ENOENT" || error.errno === 44 || /ENOENT|No such file/.test(error.message ?? "");
+  const code = error.workspaceCode ?? (isNotFound ? "not_found" : "not_directory");
+  return { code, message: error.message || String(error) };
+}
+
+function mimeTypeFor(filePath: string): string | undefined {
+  const ext = path.posix.extname(filePath).toLowerCase();
+  const known: Record<string, string> = {
+    ".txt": "text/plain", ".csv": "text/csv", ".json": "application/json",
+    ".html": "text/html", ".css": "text/css", ".js": "text/javascript",
+    ".py": "text/x-python", ".png": "image/png", ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg", ".gif": "image/gif", ".svg": "image/svg+xml",
+    ".pdf": "application/pdf", ".zip": "application/zip",
+  };
+  return known[ext];
+}
+
+function listWorkspaceFiles(directory: string): Array<{ path: string; size_bytes: number; mime_type?: string }> {
+  const result: Array<{ path: string; size_bytes: number; mime_type?: string }> = [];
+  const entries = pyodide!.FS.readdir(directory);
+  for (const entry of entries) {
+    if (entry === "." || entry === ".." || default_file_names.has(entry)) continue;
+    const fullPath = path.posix.join(directory, entry);
+    const lstat = pyodide!.FS.lstat(fullPath);
+    if ((lstat.mode & 0o170000) === 0o120000) continue;
+    const stat = pyodide!.FS.stat(fullPath);
+    if (pyodide!.FS.isDir(stat.mode)) {
+      result.push(...listWorkspaceFiles(fullPath));
+      continue;
+    }
+    const relative = fullPath.slice(pythonEnvironmentHomeDir.length + 1);
+    const mimeType = mimeTypeFor(relative);
+    result.push({
+      path: relative,
+      size_bytes: stat.size,
+      ...(mimeType ? { mime_type: mimeType } : {}),
+    });
+  }
+  return result;
+}
+
+function workspaceSnapshot(): Map<string, string> {
+  const snapshot = new Map<string, string>();
+  for (const fullPath of listFilesRecursive(pythonEnvironmentHomeDir)) {
+    const stat = pyodide!.FS.stat(fullPath);
+    snapshot.set(fullPath, `${stat.size}:${stat.mtime}`);
+  }
+  return snapshot;
+}
+
 async function runCode(
   code: string,
   files: { filename: string; b64_data: string }[],
   maxOutputFiles: number,
   maxOutputByteSize: number,
+  changedFilesOnly: boolean,
 ): Promise<CodeExecutionResponse> {
   out_string = "";
   err_string = "";
@@ -280,6 +370,7 @@ async function runCode(
   const result: CodeExecutionResponse = { success: true };
 
   try {
+    const before = changedFilesOnly ? workspaceSnapshot() : undefined;
     for (const f of files) {
       if (!isValidFilename(f.filename)) {
         throw new Error(`Invalid filename: ${f.filename}`);
@@ -302,6 +393,10 @@ async function runCode(
     for (const f of allFiles) {
       const relPath = f.slice(pythonEnvironmentHomeDir.length + 1);
       if (inputFileNames.has(relPath)) continue;
+      if (before) {
+        const stat = pyodide!.FS.stat(f);
+        if (before.get(f) === `${stat.size}:${stat.mtime}`) continue;
+      }
       if (newFiles.length >= maxOutputFiles) break;
 
       const b64 = readFileAsBase64(f);
@@ -365,6 +460,7 @@ self.onmessage = async (event) => {
         files || [],
         maxOutputFiles ?? 100,
         maxOutputByteSize ?? 10 * 1024 * 1024,
+        event.data.changedFilesOnly === true,
       );
       self.postMessage({ id, type: "runCode", result });
     } catch (error: any) {
@@ -382,6 +478,44 @@ self.onmessage = async (event) => {
           code_runtime: Date.now() - start,
         } as CodeExecutionResponse,
       });
+    }
+  } else if (type === "listFiles") {
+    try {
+      const target = resolveWorkspacePath(event.data.path ?? ".");
+      assertNoWorkspaceSymlinks(target);
+      const stat = pyodide!.FS.stat(target);
+      if (!pyodide!.FS.isDir(stat.mode)) {
+        throw Object.assign(new Error("Path is not a directory"), { workspaceCode: "not_directory" });
+      }
+      self.postMessage({ id, type, success: true, files: listWorkspaceFiles(target) });
+    } catch (error: any) {
+      self.postMessage({ id, type, success: false, error: workspaceError(error) });
+    }
+  } else if (type === "readFile") {
+    try {
+      const target = resolveWorkspacePath(event.data.path);
+      assertNoWorkspaceSymlinks(target);
+      const stat = pyodide!.FS.stat(target);
+      if (pyodide!.FS.isDir(stat.mode)) {
+        self.postMessage({ id, type, success: true, found: false, isDirectory: true });
+      } else {
+        const data = pyodide!.FS.readFile(target, { encoding: "binary" });
+        self.postMessage({ id, type, success: true, found: true, data });
+      }
+    } catch (error: any) {
+      self.postMessage({ id, type, success: false, error: workspaceError(error) });
+    }
+  } else if (type === "writeFile") {
+    try {
+      const target = resolveWorkspacePath(event.data.path);
+      const parent = path.posix.dirname(target);
+      assertNoWorkspaceSymlinks(parent);
+      pyodide!.FS.mkdirTree(parent);
+      assertNoWorkspaceSymlinks(target);
+      pyodide!.FS.writeFile(target, new Uint8Array(event.data.data));
+      self.postMessage({ id, type, success: true });
+    } catch (error: any) {
+      self.postMessage({ id, type, success: false, error: workspaceError(error) });
     }
   }
 };

@@ -276,23 +276,21 @@ The sandbox runs Python via Pyodide (WebAssembly). The following are **not avail
 - **No pip** — cannot install additional packages at runtime
 - **No subprocess / no shell** — `subprocess` and `os.system` cannot spawn processes or run shell commands (they fail without side effects)
 
-> **Security note — raw TCP egress is not yet blocked.** While high-level HTTP is blocked, raw sockets (e.g. `socket.create_connection`) can still open outbound connections. Do not rely on network isolation for sensitive data; network containment is a pending hardening item.
-
 ### Rate Limiting
 
 The server enforces a default rate limit of **10 requests per minute per client IP**. If you hit the limit, wait and retry. Do not send rapid bursts of requests.
 
 ## Troubleshooting
 
-| Symptom                                        | Cause                       | Fix                                                     |
-| ---------------------------------------------- | --------------------------- | ------------------------------------------------------- |
-| Health check fails / connection refused        | Server not running          | Run `docker run` command to start the container         |
-| `sessionId` validation error                   | Missing query parameter     | Add `?sessionId=default` to the request URL             |
-| `resource_limit` error                         | Too many or too large files | Reduce to ≤10 files, each ≤10 MB                        |
-| `timeout` error                                | Code ran too long           | Optimize code; avoid infinite loops                     |
-| `execution` error (NameError, TypeError, etc.) | Python exception            | Read error message and code context; fix code and retry |
-| Container not responding                       | Server crashed              | `docker restart vivarium`                               |
-| Port already in use                            | Port 3080 taken             | Use `-p 127.0.0.1:<other-port>:3080` in the docker run command (keeps loopback binding)
+| Symptom                                        | Cause                       | Fix                                                                                     |
+| ---------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------------- |
+| Health check fails / connection refused        | Server not running          | Run `docker run` command to start the container                                         |
+| `sessionId` validation error                   | Missing query parameter     | Add `?sessionId=default` to the request URL                                             |
+| `resource_limit` error                         | Too many or too large files | Reduce to ≤10 files, each ≤10 MB                                                        |
+| `timeout` error                                | Code ran too long           | Optimize code; avoid infinite loops                                                     |
+| `execution` error (NameError, TypeError, etc.) | Python exception            | Read error message and code context; fix code and retry                                 |
+| Container not responding                       | Server crashed              | `docker restart vivarium`                                                               |
+| Port already in use                            | Port 3080 taken             | Use `-p 127.0.0.1:<other-port>:3080` in the docker run command (keeps loopback binding) |
 
 ## Cleanup
 

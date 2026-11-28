@@ -9,6 +9,7 @@ import { AppError } from "./errors";
 import { metrics } from "./metrics";
 import { getBase64ByteSize } from "./utils";
 import { RateLimiter } from "./rate-limiter";
+import { createOtariPlugin } from "./plugins/otari-plugin";
 
 export function buildApp() {
   const rateLimiter = new RateLimiter(config.rateLimitRequestsPerMin);
@@ -16,6 +17,7 @@ export function buildApp() {
     config.sessionTimeoutMinutes,
     config.maxSessions,
   );
+  const otariPlugin = createOtariPlugin(sessionManager);
 
   const app = new Elysia()
     .onRequest(({ set, request, server }) => {
@@ -63,12 +65,51 @@ export function buildApp() {
         );
       }
 
-      if (path === "/exec") {
+      const otariExecPrefix = `${config.otariRoutePrefix}/sessions/`;
+      const otariExecTail = path.startsWith(otariExecPrefix)
+        ? path.slice(otariExecPrefix.length).split("/")
+        : [];
+      const isOtariExec = otariExecTail.length === 2 &&
+        otariExecTail[0].length > 0 && otariExecTail[1] === "exec";
+      if (path === "/exec" || isOtariExec) {
         metrics.incExecutions();
       }
     })
     .onError(({ code, error, set, request }) => {
       const path = new URL(request.url).pathname;
+      const isOtariPath = path === config.otariRoutePrefix || path.startsWith(`${config.otariRoutePrefix}/`);
+      const otariExecPrefix = `${config.otariRoutePrefix}/sessions/`;
+      const otariExecTail = path.startsWith(otariExecPrefix)
+        ? path.slice(otariExecPrefix.length).split("/")
+        : [];
+      const isOtariExec = otariExecTail.length === 2 && otariExecTail[0].length > 0 && otariExecTail[1] === "exec";
+
+      if (isOtariPath) {
+        if (error instanceof Error && error.name === "ProtocolError" && typeof (error as any).status === "number") {
+          set.status = (error as any).status;
+          if ((error as any).retryAfter !== undefined) set.headers["Retry-After"] = String((error as any).retryAfter);
+          return { detail: error.message };
+        }
+        if (code === "VALIDATION" || code === "PARSE") {
+          set.status = 422;
+          if (isOtariExec) metrics.incRequests("error");
+          return { detail: error.message };
+        }
+        if (error instanceof AppError) {
+          if (isOtariExec) {
+            metrics.incRequests(error.type === "rate_limit" ? "rate_limited" : error.type === "timeout" ? "timeout" : "error");
+            if (error.type === "rate_limit") metrics.incExecutions();
+          }
+          set.status = error.type === "resource_limit" || error.type === "timeout" || error.type === "system"
+            ? 503
+            : error.statusCode;
+          return { detail: error.message };
+        }
+        logger.error({ err: error }, "Unhandled Otari adapter error");
+        if (isOtariExec) metrics.incRequests("error");
+        set.status = 503;
+        return { detail: "Code execution backend is temporarily unavailable" };
+      }
 
       if (code === "VALIDATION") {
         if (path === "/exec") {
@@ -254,7 +295,8 @@ export function buildApp() {
     .get("/metrics", ({ set }) => {
       set.headers["Content-Type"] = "text/plain";
       return metrics.render(sessionManager.getActiveSessionCount());
-    });
+    })
+    .use(otariPlugin);
 
   return { app, rateLimiter, sessionManager };
 }

@@ -17,6 +17,7 @@ export function buildApp() {
     config.sessionTimeoutMinutes,
     config.maxSessions,
   );
+  const otariPlugin = createOtariPlugin(sessionManager);
 
   const app = new Elysia()
     .onRequest(({ set, request, server }) => {
@@ -295,7 +296,7 @@ export function buildApp() {
       set.headers["Content-Type"] = "text/plain";
       return metrics.render(sessionManager.getActiveSessionCount());
     })
-    .use(createOtariPlugin(sessionManager));
+    .use(otariPlugin);
 
   return { app, rateLimiter, sessionManager };
 }
